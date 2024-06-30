@@ -1,5 +1,7 @@
 use std::{
-    error::Error, net::UdpSocket, process, time::{Duration, Instant}
+    error::Error,
+    net::UdpSocket,
+    time::{Duration, Instant},
 };
 
 const TELLO_IP: &'static str = "0.0.0.0:8889";
@@ -12,6 +14,8 @@ pub struct Drone {
     stream_on: bool,
     retry_count: i32,
     last_command_time: Instant,
+    response_receiver: ResponeReceiver,
+    state: Vec<&'static str>, //Placeholder vec
 }
 
 impl Drone {
@@ -22,7 +26,6 @@ impl Drone {
             .set_read_timeout(Some(Duration::from_secs(RESPONSE_TIMEOUT)))
             .expect("set_read_timeout call failed");
         socket.set_nonblocking(true).unwrap();
-        socket.connect(TELLO_IP).expect("connection failed");
 
         Drone {
             socket,
@@ -30,6 +33,8 @@ impl Drone {
             stream_on: false,
             retry_count: 3,
             last_command_time: Instant::now(),
+            response_receiver: ResponeReceiver::new(),
+            state: vec!["placeholder"],
         }
     }
 
@@ -42,15 +47,18 @@ impl Drone {
  * Private command methods for API
  */
 impl Drone {
-    fn send_command_without_return() {
-
-    }
+    fn send_command_without_return() {}
 
     // Some placeholder code, need to rewrite this
     fn send_command_with_return(&mut self, command: &str, timeout: u64) -> &'static str {
         let time_since_last_command = Instant::now().duration_since(self.last_command_time);
 
-        println!("{:?}", time_since_last_command);
+        //
+        self.socket
+            .send_to(command.as_bytes(), TELLO_IP)
+            .expect("Sending command failed");
+
+        let mut buf = [0; 10];
 
         self.last_command_time = Instant::now();
         "placeholder"
@@ -70,11 +78,24 @@ impl Drone {
     }
 }
 
+struct ResponeReceiver {
+    response: Option<&'static str>,
+}
+
+struct StateReceiver {
+
+}
+
+impl ResponeReceiver {
+    fn new() -> Self {
+        ResponeReceiver{
+            response: Some("change"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use std::time;
-    use std::thread;
-
     use super::*;
 
     #[test]
@@ -87,6 +108,7 @@ mod tests {
             stream_on: false,
             retry_count: 3,
             last_command_time: Instant::now(),
+            state: vec!["a"],
         };
 
         d.send_command_with_return("a", 6);
