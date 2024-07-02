@@ -17,7 +17,7 @@ pub struct Drone {
     stream_on: bool,
     retry_count: i32,
     last_command_time: Instant,
-    response: Arc<Mutex<Option<String>>>,
+    shared_response: Arc<Mutex<Option<String>>>,
     state: Vec<&'static str>, //Placeholder vec
 }
 
@@ -31,9 +31,9 @@ impl Drone {
         socket.set_nonblocking(true).unwrap();
 
         // Shared response variable protected by mutex
-        let response = Arc::new(Mutex::new(None::<String>));
+        let shared_response = Arc::new(Mutex::new(None::<String>));
 
-        let receiver_response = Arc::clone(&response);
+        let receiver_response = Arc::clone(&shared_response);
 
         thread::spawn(move || {
             let socket = UdpSocket::bind(TELLO_IP).expect("Couldn't bind receiver socket");
@@ -54,7 +54,7 @@ impl Drone {
             stream_on: false,
             retry_count: 3,
             last_command_time: Instant::now(),
-            response,
+            shared_response,
             state: vec!["placeholder"],
         }
     }
@@ -81,7 +81,7 @@ impl Drone {
             .send_to(command.as_bytes(), TELLO_IP)
             .expect("Sending command failed");
 
-        let value = self.response.lock().unwrap();
+        let value = self.shared_response.lock().unwrap();
         while value.is_none() {
             if Instant::now().duration_since(timestamp).as_secs() > timeout {
                 // Timeout handling
@@ -110,31 +110,6 @@ impl Drone {
     }
 }
 
-/**
- * This is run on a diff thread as a mutable ref as
- * only one mutable ref can exist at a time.
- * Hence cannot change response within drone freely as drone is being used
- */
-struct ResponeReceiver {
-    response: Option<&'static str>,
-}
-
-struct StateReceiver {
-    state: Option<&'static str>, // Placeholder till states sorted
-}
-
-impl ResponeReceiver {
-    fn new() -> Self {
-        ResponeReceiver { response: None }
-    }
-}
-
-impl StateReceiver {
-    fn new() -> Self {
-        StateReceiver { state: None }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,7 +117,7 @@ mod tests {
     #[test]
     fn system_time_test() {
         let socket = UdpSocket::bind(TELLO_IP).expect("couldn't bind to address");
-        let response = Arc::new(Mutex::new(None::<String>));
+        let shared_response = Arc::new(Mutex::new(None::<String>));
 
         let mut d = Drone {
             socket,
@@ -150,7 +125,7 @@ mod tests {
             stream_on: false,
             retry_count: 3,
             last_command_time: Instant::now(),
-            response,
+            shared_response,
             state: vec!["a"],
         };
 
