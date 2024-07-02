@@ -3,6 +3,7 @@ use std::{
     error::Error,
     net::UdpSocket,
     sync::{Arc, Mutex},
+    process,
     thread,
     time::{Duration, Instant},
 };
@@ -76,6 +77,7 @@ impl Drone {
     }
 
     // Send command
+    // Option doesn't really make sense, will sort later - Nvm note to self, was Option as i wanted None to be valid
     fn send_command_with_return(&mut self, command: &str, timeout: u64) -> Option<String> {
         let time_since_last_command = Instant::now().duration_since(self.last_command_time);
         if TIME_BTW_COMMANDS.min(time_since_last_command.as_secs_f64()) != TIME_BTW_COMMANDS {
@@ -106,9 +108,11 @@ impl Drone {
         }
 
         self.last_command_time = Instant::now();
+        let temp = value.clone();
+        let mut temp = temp.unwrap();
+        temp = String::from(temp.trim_end_matches("\r\n"));
 
-        // Clone the Option<String> value from the Mutex
-        value.clone()
+        Some(temp) // Once again, option doesn't make sense?
     }
 
     // Sends control command to Tello and waits for a response
