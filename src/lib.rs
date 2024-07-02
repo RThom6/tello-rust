@@ -10,6 +10,7 @@ use std::{
 const TELLO_IP: &'static str = "0.0.0.0:8889";
 const RESPONSE_TIMEOUT: u64 = 7; // Seconds
 const TAKEOFF_TIMEOUT: u64 = 20; // Seconds
+const TIME_BTW_COMMANDS: f64 = 0.1; // Seconds
 
 pub struct Drone {
     socket: UdpSocket,
@@ -68,11 +69,22 @@ impl Drone {
  * Private command methods for API
  */
 impl Drone {
-    fn send_command_without_return() {}
+    fn send_command_without_return(&self, command: &str) {
+        self.socket
+            .send_to(command.as_bytes(), TELLO_IP)
+            .expect("Sending command failed");
+    }
 
-    // Some placeholder code, need to rewrite this
+    // Send command
     fn send_command_with_return(&mut self, command: &str, timeout: u64) -> Option<String> {
         let time_since_last_command = Instant::now().duration_since(self.last_command_time);
+        if TIME_BTW_COMMANDS.min(time_since_last_command.as_secs_f64()) != TIME_BTW_COMMANDS {
+            println!(
+                "Command {} executed too soon, waiting {} seconds",
+                command, TIME_BTW_COMMANDS
+            );
+        }
+
         // Insert time since command check
 
         let timestamp = Instant::now();
@@ -85,6 +97,11 @@ impl Drone {
         while value.is_none() {
             if Instant::now().duration_since(timestamp).as_secs() > timeout {
                 // Timeout handling
+                let temp = format!(
+                    "Aborting command '{}'. Did not receive a response after {} seconds",
+                    command, timeout
+                );
+                return Some(temp);
             }
         }
 
