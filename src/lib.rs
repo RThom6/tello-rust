@@ -8,8 +8,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-const TELLO_ADDR: &'static str = "0.0.0.0:8889";
-const TELLO_STATE_ADDR: &'static str = "0.0.0.0:8890";
+const TELLO_ADDR: &'static str = "0.0.0.0:8889"; // Need to change later
+const TELLO_STATE_ADDR: &'static str = "0.0.0.0:8890"; // Would this not be the same ip as the former?
+// 'Any' addr not important if only want working for 1 drone surely
 const RESPONSE_TIMEOUT: u64 = 7; // Seconds
 const TAKEOFF_TIMEOUT: u64 = 20; // Seconds
 const TIME_BTW_COMMANDS: f64 = 0.1; // Seconds
@@ -74,6 +75,7 @@ fn start_receiver_thread(response_receiver: Arc<Mutex<Option<String>>>) {
     });
 }
 
+// Edit once addr magic figured out, udp_state_receiver() method in djitellopy
 fn start_state_receiver_thread(response_receiver: Arc<Mutex<Option<String>>>) {
     thread::spawn(move || {
         let socket = UdpSocket::bind(TELLO_STATE_ADDR).expect("Couldn't bind receiver socket");
