@@ -8,7 +8,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-const TELLO_IP: &'static str = "0.0.0.0:8889";
+const TELLO_ADDR: &'static str = "0.0.0.0:8889";
+const TELLO_STATE_ADDR: &'static str = "0.0.0.0:8890";
 const RESPONSE_TIMEOUT: u64 = 7; // Seconds
 const TAKEOFF_TIMEOUT: u64 = 20; // Seconds
 const TIME_BTW_COMMANDS: f64 = 0.1; // Seconds
@@ -25,7 +26,7 @@ pub struct Drone {
 
 impl Drone {
     pub fn new() -> Drone {
-        let socket = UdpSocket::bind(TELLO_IP).expect("couldn't bind to address");
+        let socket = UdpSocket::bind(TELLO_ADDR).expect("couldn't bind to address");
 
         socket
             .set_read_timeout(Some(Duration::from_secs(RESPONSE_TIMEOUT)))
@@ -34,21 +35,13 @@ impl Drone {
 
         // Shared response variable protected by mutex
         let shared_response = Arc::new(Mutex::new(None::<String>));
+        let response_receiver = Arc::clone(&shared_response);
+        start_receiver_thread(response_receiver);
 
-        let receiver_response = Arc::clone(&shared_response);
-
-        thread::spawn(move || {
-            let socket = UdpSocket::bind(TELLO_IP).expect("Couldn't bind receiver socket");
-            let mut buf = [0; 1024];
-
-            loop {
-                let (amt, _src) = socket.recv_from(&mut buf).expect("Didn't receive message");
-                let received = String::from_utf8_lossy(&buf[..amt]);
-
-                let mut value = receiver_response.lock().unwrap();
-                *value = Some(received.to_string());
-            }
-        });
+        // Shared state response variable protected by mutex
+        let state_response = Arc::new(Mutex::new(None::<String>));
+        let state_receiver = Arc::clone(&state_response);
+        start_state_receiver_thread(state_receiver);
 
         Drone {
             socket,
@@ -66,14 +59,46 @@ impl Drone {
     }
 }
 
+fn start_receiver_thread(response_receiver: Arc<Mutex<Option<String>>>) {
+    thread::spawn(move || {
+        let socket = UdpSocket::bind(TELLO_ADDR).expect("Couldn't bind receiver socket");
+        let mut buf = [0; 1024];
+
+        loop {
+            let (amt, _src) = socket.recv_from(&mut buf).expect("Didn't receive message");
+            let received = String::from_utf8_lossy(&buf[..amt]);
+
+            let mut value = response_receiver.lock().unwrap();
+            *value = Some(received.to_string());
+        }
+    });
+}
+
+fn start_state_receiver_thread(response_receiver: Arc<Mutex<Option<String>>>) {
+    thread::spawn(move || {
+        let socket = UdpSocket::bind(TELLO_STATE_ADDR).expect("Couldn't bind receiver socket");
+        let mut buf = [0; 1024];
+
+        loop {
+            let (amt, _src) = socket.recv_from(&mut buf).expect("Didn't receive message");
+            let received = String::from_utf8_lossy(&buf[..amt]);
+
+            let mut value = response_receiver.lock().unwrap();
+            *value = Some(received.to_string());
+        }
+    });
+}
+
 /**
  * Private command methods for API
  */
 impl Drone {
     fn send_command_without_return(&self, command: &str) {
         self.socket
-            .send_to(command.as_bytes(), TELLO_IP)
+            .send_to(command.as_bytes(), TELLO_ADDR)
             .expect("Sending command failed");
+
+        println!("Send Command {}", command);
     }
 
     // Send command
@@ -92,7 +117,7 @@ impl Drone {
         let timestamp = Instant::now();
 
         self.socket
-            .send_to(command.as_bytes(), TELLO_IP)
+            .send_to(command.as_bytes(), TELLO_ADDR)
             .expect("Sending command failed");
 
         let value = self.shared_response.lock().unwrap();
@@ -116,18 +141,42 @@ impl Drone {
     }
 
     // Sends control command to Tello and waits for a response
-    fn send_control_command(&mut self, command: &str, timeout: u64) -> Result<(), Box<dyn Error>> {
+    fn send_control_command(&mut self, command: &str, timeout: u64) -> bool {
         for _ in 0..self.retry_count {
             let response = self
                 .send_command_with_return(command, timeout)
                 .unwrap_or_else(|| String::from("Attempt failed, retrying"));
 
             if response.to_lowercase().contains("ok") {
-                return Ok(());
+                return true;
             }
         }
 
-        Err("Command {command} failed to run".into())
+        // raise_result_error ?
+        return false;
+    }
+
+    fn get_current_state(&mut self) -> bool {
+        
+
+        return false;
+    }
+}
+
+// Public user command methods
+impl Drone {
+    pub fn connect(&mut self) {
+        self.send_control_command("command", RESPONSE_TIMEOUT);
+
+        let reps = 20;
+        for i in 0..reps {
+            if self.get_current_state() {
+                let t = i / reps;
+
+            }
+
+            thread::sleep(Duration::from_secs_f64(1.0 / reps as f64));
+        }
     }
 }
 
@@ -137,7 +186,7 @@ mod tests {
 
     #[test]
     fn system_time_test() {
-        let socket = UdpSocket::bind(TELLO_IP).expect("couldn't bind to address");
+        let socket = UdpSocket::bind(TELLO_ADDR).expect("couldn't bind to address");
         let shared_response = Arc::new(Mutex::new(None::<String>));
 
         let mut d = Drone {
