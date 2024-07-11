@@ -1,12 +1,8 @@
 use core::time;
 use std::{
-    error::Error,
-    net::UdpSocket,
-    sync::{Arc, Mutex},
-    process,
-    thread,
-    time::{Duration, Instant},
+    collections::HashMap, error::Error, net::UdpSocket, process, sync::{Arc, Mutex}, thread, time::{Duration, Instant}
 };
+use log::{debug, error};
 
 const TELLO_ADDR: &'static str = "0.0.0.0:8889"; // Need to change later
 const TELLO_STATE_ADDR: &'static str = "0.0.0.0:8890"; // Would this not be the same ip as the former?
@@ -22,8 +18,15 @@ pub struct Drone {
     retry_count: i32,
     last_command_time: Instant,
     shared_response: Arc<Mutex<Option<String>>>,
-    state: Vec<&'static str>, //Placeholder vec
+    state: HashMap<String, StateValue>, //State hashmap, closest thing to python dict
 }
+
+enum StateValue {
+    Int(i32),
+    Float(f64),
+    Str(String),
+}
+
 
 impl Drone {
     pub fn new() -> Drone {
@@ -51,7 +54,7 @@ impl Drone {
             retry_count: 3,
             last_command_time: Instant::now(),
             shared_response,
-            state: vec!["placeholder"],
+            state: HashMap::new(),
         }
     }
 
@@ -162,6 +165,44 @@ impl Drone {
         
 
         return false;
+    }
+}
+
+// Random Private methods
+impl Drone {
+    fn parse_state(&mut self, state_str: &str) -> bool {
+        let state_str = state_str.trim();
+
+        if state_str.eq("ok") {
+            return false;
+        }
+
+        for field in state_str.split(';') {
+            let split: Vec<&str> = field.split(':').collect();
+
+            if split.len() < 2 {
+                continue;
+            }
+            
+            let key = split[0].to_string();
+            let value_str = split[1];
+            let value: StateValue = match self.state_field_converter(&key, value_str) {
+                Ok(v) => v,
+                Err(e) => {
+                    debug!("Error parsing state value for {}: {} to {}", key, value_str, e);
+                    error!("{}", e);
+                    continue;
+                }
+            };
+
+            self.state.insert(key, value);
+        }
+
+        true // Placeholder so vs doesnt scream at me
+    }
+
+    fn state_field_converter(&mut self, key: &str, value_str: &str) -> Result<StateValue, String> {
+        Ok(StateValue::Str("str".to_string())) // Placeholder
     }
 }
 
