@@ -1,20 +1,25 @@
-use core::time;
-use std::{
-    collections::HashMap, error::Error, net::UdpSocket, process, sync::{Arc, Mutex}, thread, time::{Duration, Instant}
-};
 use log::{debug, error};
+use std::{
+    collections::{hash_map::IntoKeys, HashMap},
+    error::Error,
+    net::UdpSocket,
+    process,
+    sync::{Arc, Mutex},
+    thread,
+    time::{Duration, Instant},
+};
 
 const TELLO_ADDR: &'static str = "0.0.0.0:8889"; // Need to change later
 const TELLO_STATE_ADDR: &'static str = "0.0.0.0:8890"; // Would this not be the same ip as the former?
-// 'Any' addr not important if only want working for 1 drone surely
+                                                       // 'Any' addr not important if only want working for 1 drone surely
 const RESPONSE_TIMEOUT: u64 = 7; // Seconds
 const TAKEOFF_TIMEOUT: u64 = 20; // Seconds
 const TIME_BTW_COMMANDS: f64 = 0.1; // Seconds
 
 // State field types: states not here are all strings
 const INT_STATE_FIELDS: &[&str] = &[
-    "mid", "x", "y", "z", "pitch", "roll", "yaw", "vgx", "vgy", "vgz", "templ", 
-    "temph", "tof", "h", "bat", "time" 
+    "mid", "x", "y", "z", "pitch", "roll", "yaw", "vgx", "vgy", "vgz", "templ", "temph", "tof",
+    "h", "bat", "time",
 ];
 const FLOAT_STATE_FIELDS: &[&str] = &["baro", "agx", "agy", "agz"];
 
@@ -33,7 +38,6 @@ enum StateValue {
     Float(f64),
     Str(String),
 }
-
 
 impl Drone {
     pub fn new() -> Drone {
@@ -169,13 +173,11 @@ impl Drone {
     }
 
     fn get_current_state(&mut self) -> bool {
-        
-
         return false;
     }
 }
 
-// Random Private methods
+// State field methods
 impl Drone {
     fn parse_state(&mut self, state_str: &str) -> bool {
         let state_str = state_str.trim();
@@ -190,13 +192,16 @@ impl Drone {
             if split.len() < 2 {
                 continue;
             }
-            
+
             let key = split[0].to_string();
             let value_str = split[1];
             let value: StateValue = match self.state_field_converter(&key, value_str) {
                 Ok(v) => v,
                 Err(e) => {
-                    debug!("Error parsing state value for {}: {} to {}", key, value_str, e);
+                    debug!(
+                        "Error parsing state value for {}: {} to {}",
+                        key, value_str, e
+                    );
                     error!("{}", e);
                     continue;
                 }
@@ -211,12 +216,69 @@ impl Drone {
     // Converts fields to the correct type based on field key
     fn state_field_converter(&mut self, key: &str, value_str: &str) -> Result<StateValue, String> {
         if INT_STATE_FIELDS.contains(&key) {
-            value_str.parse::<i32>().map(StateValue::Int).map_err(|e| e.to_string())
+            value_str
+                .parse::<i32>()
+                .map(StateValue::Int)
+                .map_err(|e| e.to_string())
         } else if FLOAT_STATE_FIELDS.contains(&key) {
-            value_str.parse::<f64>().map(StateValue::Float).map_err(|e| e.to_string())
+            value_str
+                .parse::<f64>()
+                .map(StateValue::Float)
+                .map_err(|e| e.to_string())
         } else {
             Ok(StateValue::Str(value_str.to_string()))
         }
+    }
+
+    // Get a specific state field by name
+    fn get_state_field(&self, key: &str) -> &StateValue {
+        if !self.state.contains_key(&key.to_string()) {
+            error!("Could not get state property: {}", key);
+        }
+
+        self.state.get(&key.to_string()).unwrap()
+    }
+
+    // Returns pitch in degree
+    fn get_pitch(&self) -> &StateValue {
+        self.get_state_field("pitch")
+    }
+
+    fn get_roll(&self) -> &StateValue {
+        self.get_state_field("roll")
+    }
+
+    fn get_yaw(&self) -> &StateValue {
+        self.get_state_field("yaw")
+    }
+
+    // Z axis speed
+    fn get_speed_x(&self) -> &StateValue {
+        self.get_state_field("vgx")
+    }
+
+    // Y axis speed
+    fn get_speed_y(&self) -> &StateValue {
+        self.get_state_field("vgy")
+    }
+
+    fn get_speed_z(&self) -> &StateValue {
+        self.get_state_field("vgz")
+    }
+
+    // X axis acceleration
+    fn get_acceleration_x(&self) -> &StateValue {
+        self.get_state_field("agx")
+    }
+
+    // Y axis acceleration
+    fn get_acceleration_y(&self) -> &StateValue {
+        self.get_state_field("agy")
+    }
+
+    // Z axis acceleration
+    fn get_acceleration_z(&self) -> &StateValue {
+        self.get_state_field("agz")
     }
 }
 
@@ -229,7 +291,6 @@ impl Drone {
         for i in 0..reps {
             if self.get_current_state() {
                 let t = i / reps;
-
             }
 
             thread::sleep(Duration::from_secs_f64(1.0 / reps as f64));
@@ -239,8 +300,6 @@ impl Drone {
 
 #[cfg(test)]
 mod tests {
-    use std::hash::Hash;
-
     use super::*;
 
     #[test]
