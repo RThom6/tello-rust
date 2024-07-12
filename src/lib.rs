@@ -11,6 +11,13 @@ const RESPONSE_TIMEOUT: u64 = 7; // Seconds
 const TAKEOFF_TIMEOUT: u64 = 20; // Seconds
 const TIME_BTW_COMMANDS: f64 = 0.1; // Seconds
 
+// State field types: states not here are all strings
+const INT_STATE_FIELDS: &[&str] = &[
+    "mid", "x", "y", "z", "pitch", "roll", "yaw", "vgx", "vgy", "vgz", "templ", 
+    "temph", "tof", "h", "bat", "time" 
+];
+const FLOAT_STATE_FIELDS: &[&str] = &["baro", "agx", "agy", "agz"];
+
 pub struct Drone {
     socket: UdpSocket,
     is_flying: bool,
@@ -201,8 +208,15 @@ impl Drone {
         true // Placeholder so vs doesnt scream at me
     }
 
+    // Converts fields to the correct type based on field key
     fn state_field_converter(&mut self, key: &str, value_str: &str) -> Result<StateValue, String> {
-        Ok(StateValue::Str("str".to_string())) // Placeholder
+        if INT_STATE_FIELDS.contains(&key) {
+            value_str.parse::<i32>().map(StateValue::Int).map_err(|e| e.to_string())
+        } else if FLOAT_STATE_FIELDS.contains(&key) {
+            value_str.parse::<f64>().map(StateValue::Float).map_err(|e| e.to_string())
+        } else {
+            Ok(StateValue::Str(value_str.to_string()))
+        }
     }
 }
 
@@ -225,6 +239,8 @@ impl Drone {
 
 #[cfg(test)]
 mod tests {
+    use std::hash::Hash;
+
     use super::*;
 
     #[test]
@@ -239,7 +255,7 @@ mod tests {
             retry_count: 3,
             last_command_time: Instant::now(),
             shared_response,
-            state: vec!["a"],
+            state: HashMap::new(),
         };
 
         d.send_command_with_return("a", 6);
