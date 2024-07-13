@@ -280,6 +280,35 @@ impl Drone {
     fn get_acceleration_z(&self) -> &StateValue {
         self.get_state_field("agz")
     }
+
+    // Get lowest temperature
+    fn get_lowest_temperature(&self) -> &StateValue {
+        self.get_state_field("templ")
+    }
+
+    // Get highest temperature
+    fn get_highest_temperature(&self) -> &StateValue {
+        self.get_state_field("temph")
+    }
+
+    // Get average temperature
+    fn get_temperature(&self) -> i32 {
+        let templ = self.get_lowest_temperature();
+        let temph = self.get_highest_temperature();
+
+        // Is this... a sin?
+        // Change the type of templ and temph
+        let templ = match templ {
+            StateValue::Int(i) => *i,
+            _ => panic!("Uh oh scoob"),
+        };
+        let temph = match temph {
+            StateValue::Int(i) => *i,
+            _ => panic!("Uh oh scoob"),
+        };
+
+        templ + temph
+    }
 }
 
 // Public user command methods
