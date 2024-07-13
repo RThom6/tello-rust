@@ -153,7 +153,7 @@ impl Drone {
         let mut temp = temp.unwrap();
         temp = String::from(temp.trim_end_matches("\r\n"));
 
-        Some(temp) // Once again, option doesn't make sense?
+        Some(temp)
     }
 
     // Sends control command to Tello and waits for a response
@@ -170,6 +170,20 @@ impl Drone {
 
         // raise_result_error ?
         return false;
+    }
+
+    fn send_read_command(&mut self, command: &str) -> String {
+        let response = self
+            .send_command_with_return(command, RESPONSE_TIMEOUT)
+            .unwrap();
+
+        let error_words = ["error", "ERROR", "False"];
+        if error_words.iter().any(|&word| response.contains(word)) {
+            debug!("uh oh");
+            error!("ruh roh");
+        }
+
+        return response;
     }
 }
 
