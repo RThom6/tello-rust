@@ -171,10 +171,6 @@ impl Drone {
         // raise_result_error ?
         return false;
     }
-
-    fn get_current_state(&mut self) -> bool {
-        return false;
-    }
 }
 
 // State field methods
@@ -308,6 +304,46 @@ impl Drone {
         };
 
         templ + temph
+    }
+
+    // Get current height in cm
+    fn get_height(&self) -> i32 {
+        match self.get_state_field("h") {
+            StateValue::Int(i) => *i,
+            _ => panic!("Uh oh"),
+        }
+    }
+
+    // Get current distance value from TOF in cm
+    fn get_distance_tof(&self) -> i32 {
+        match self.get_state_field("tof") {
+            StateValue::Int(i) => *i,
+            _ => panic!("Uh oh"),
+        }
+    }
+
+    // Get current barometer measurement in cm -> absolute height
+    fn get_barometer(&self) -> i32 {
+        match self.get_state_field("baro") {
+            StateValue::Int(i) => *i * 100,
+            _ => panic!("Uh oh"),
+        }
+    }
+
+    // Get the time the motors have been active in seconds
+    fn get_flight_time(&self) -> i32 {
+        match self.get_state_field("time") {
+            StateValue::Int(i) => *i,
+            _ => panic!("Uh oh"),
+        }
+    }
+
+    fn get_udp_video_address(&self) {
+        // Placeholder, uses global variables in python implementation, will sort what this needs soon
+    }
+
+    fn get_frame_read(&self) {
+        // Also placeholder for now
     }
 }
 
