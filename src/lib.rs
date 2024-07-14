@@ -141,6 +141,8 @@ impl Drone {
     // Send command
     // Option doesn't really make sense, will sort later - Nvm note to self, was Option as i wanted None to be valid
     fn send_command_with_return(&mut self, command: &str, timeout: u64) -> Option<String> {
+        // THERE IS AN ERROR WITH THIS, WILL FIX IT IN THE MORNING
+        //
         // let time_since_last_command = Instant::now().duration_since(self.last_command_time);
         // if TIME_BTW_COMMANDS.min(time_since_last_command.as_secs_f64()) != TIME_BTW_COMMANDS {
         //     println!(
