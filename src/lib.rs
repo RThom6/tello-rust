@@ -1,6 +1,6 @@
 use log::{debug, error};
 use std::{
-    collections::{hash_map::IntoKeys, HashMap},
+    collections::HashMap,
     error::Error,
     net::UdpSocket,
     process,
@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-const TELLO_ADDR: &'static str = "0.0.0.0:8889"; // Need to change later
+const TELLO_ADDR: &'static str = "192.168.10.1:8889"; // Need to change later
 const TELLO_STATE_ADDR: &'static str = "0.0.0.0:8890"; // Would this not be the same ip as the former?
                                                        // 'Any' addr not important if only want working for 1 drone surely
 const RESPONSE_TIMEOUT: u64 = 7; // Seconds
@@ -41,17 +41,42 @@ enum StateValue {
 
 impl Drone {
     pub fn new() -> Drone {
-        let socket = UdpSocket::bind(TELLO_ADDR).expect("couldn't bind to address");
+        let socket = UdpSocket::bind("0.0.0.0:8889")
+            .expect(format!("couldn't bind to address {}", TELLO_ADDR).as_str());
 
         socket
             .set_read_timeout(Some(Duration::from_secs(RESPONSE_TIMEOUT)))
             .expect("set_read_timeout call failed");
-        socket.set_nonblocking(true).unwrap();
+        // let socket = Arc::new(Mutex::new(socket));
+        let socket_recv = socket.try_clone().unwrap();
 
         // Shared response variable protected by mutex
         let shared_response = Arc::new(Mutex::new(None::<String>));
         let response_receiver = Arc::clone(&shared_response);
-        start_receiver_thread(response_receiver);
+
+        thread::spawn(move || {
+            let socket = socket_recv;
+            let mut buf = [0; 1024];
+
+            loop {
+                match socket.recv_from(&mut buf) {
+                    Ok((amt, _src)) => {
+                        let received = String::from_utf8_lossy(&buf[..amt]);
+                        if let Ok(mut value) = response_receiver.lock() {
+                            *value = Some(received.to_string());
+                        }
+                    }
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        // Ignore the WouldBlock error and continue the loop
+                        continue;
+                    }
+                    Err(e) => {
+                        eprintln!("Error receiving message: {:?}", e);
+                        break;
+                    }
+                }
+            }
+        });
 
         // Shared state response variable protected by mutex
         let state_response = Arc::new(Mutex::new(None::<String>));
@@ -68,31 +93,27 @@ impl Drone {
             state: HashMap::new(),
         }
     }
-
-    pub fn takeoff(&mut self) {
-        self.is_flying = true;
-    }
 }
 
-fn start_receiver_thread(response_receiver: Arc<Mutex<Option<String>>>) {
-    thread::spawn(move || {
-        let socket = UdpSocket::bind(TELLO_ADDR).expect("Couldn't bind receiver socket");
-        let mut buf = [0; 1024];
+// fn start_receiver_thread(socket: &UdpSocket, response_receiver: Arc<Mutex<Option<String>>>) {
+//     thread::spawn(move || {
+//         let socket = socket.clone();
+//         let mut buf = [0; 1024];
 
-        loop {
-            let (amt, _src) = socket.recv_from(&mut buf).expect("Didn't receive message");
-            let received = String::from_utf8_lossy(&buf[..amt]);
+//         loop {
+//             let (amt, _src) = socket.recv_from(&mut buf).expect("Didn't receive message");
+//             let received = String::from_utf8_lossy(&buf[..amt]);
 
-            let mut value = response_receiver.lock().unwrap();
-            *value = Some(received.to_string());
-        }
-    });
-}
+//             let mut value = response_receiver.lock().unwrap();
+//             *value = Some(received.to_string());
+//         }
+//     });
+// }
 
 // Edit once addr magic figured out, udp_state_receiver() method in djitellopy
 fn start_state_receiver_thread(response_receiver: Arc<Mutex<Option<String>>>) {
     thread::spawn(move || {
-        let socket = UdpSocket::bind(TELLO_STATE_ADDR).expect("Couldn't bind receiver socket");
+        let socket = UdpSocket::bind("0.0.0.0:8890").expect("Couldn't bind receiver socket");
         let mut buf = [0; 1024];
 
         loop {
@@ -120,13 +141,13 @@ impl Drone {
     // Send command
     // Option doesn't really make sense, will sort later - Nvm note to self, was Option as i wanted None to be valid
     fn send_command_with_return(&mut self, command: &str, timeout: u64) -> Option<String> {
-        let time_since_last_command = Instant::now().duration_since(self.last_command_time);
-        if TIME_BTW_COMMANDS.min(time_since_last_command.as_secs_f64()) != TIME_BTW_COMMANDS {
-            println!(
-                "Command {} executed too soon, waiting {} seconds",
-                command, TIME_BTW_COMMANDS
-            );
-        }
+        // let time_since_last_command = Instant::now().duration_since(self.last_command_time);
+        // if TIME_BTW_COMMANDS.min(time_since_last_command.as_secs_f64()) != TIME_BTW_COMMANDS {
+        //     println!(
+        //         "Command {} executed too soon, waiting {} seconds",
+        //         command, TIME_BTW_COMMANDS
+        //     );
+        // }
 
         // Insert time since command check
 
@@ -136,9 +157,19 @@ impl Drone {
             .send_to(command.as_bytes(), TELLO_ADDR)
             .expect("Sending command failed");
 
-        let value = self.shared_response.lock().unwrap();
-        while value.is_none() {
+        loop {
+            let value = self.shared_response.lock().unwrap();
+
+            if !value.is_none() {
+                self.last_command_time = Instant::now();
+                let temp = value.clone();
+                let mut temp = temp.unwrap();
+                temp = String::from(temp.trim_end_matches("\r\n"));
+                return Some(temp);
+            }
+
             if Instant::now().duration_since(timestamp).as_secs() > timeout {
+                println!("CONFUSED");
                 // Timeout handling
                 let temp = format!(
                     "Aborting command '{}'. Did not receive a response after {} seconds",
@@ -146,14 +177,9 @@ impl Drone {
                 );
                 return Some(temp);
             }
+
+            println!("{}", Instant::now().duration_since(timestamp).as_millis());
         }
-
-        self.last_command_time = Instant::now();
-        let temp = value.clone();
-        let mut temp = temp.unwrap();
-        temp = String::from(temp.trim_end_matches("\r\n"));
-
-        Some(temp)
     }
 
     // Sends control command to Tello and waits for a response
@@ -164,8 +190,11 @@ impl Drone {
                 .unwrap_or_else(|| String::from("Attempt failed, retrying"));
 
             if response.to_lowercase().contains("ok") {
+                println!("{}", response);
                 return true;
             }
+
+            // println!("tried {} times: {}", i, response);
         }
 
         // raise_result_error ?
@@ -184,6 +213,21 @@ impl Drone {
         }
 
         return response;
+    }
+
+    // Send command to tello and wait for response, parses response into an integer
+    fn send_read_command_int(&mut self, command: &str) -> i32 {
+        self.send_read_command(command).parse::<i32>().unwrap()
+    }
+
+    // Send command to tello and wait for response, parses response into float
+    fn send_read_command_float(&mut self, command: &str) -> f64 {
+        self.send_read_command(command).parse::<f64>().unwrap()
+    }
+
+    fn raise_result_error(&self, command: &str, response: &str) {
+        let tries = 1 + self.retry_count;
+        // need some replacement for the raise python macro, easy enough will sort it soon
     }
 }
 
@@ -368,13 +412,51 @@ impl Drone {
 
         let reps = 20;
         for i in 0..reps {
-            if self.get_current_state() {
-                let t = i / reps;
+            if !self.state.is_empty() {
+                // let t = i / reps;
+                println!("trying");
+                // Debug message
+                break;
             }
 
             thread::sleep(Duration::from_secs_f64(1.0 / reps as f64));
         }
+
+        if self.state.is_empty() {
+            // raise error
+        }
     }
+
+    // Send a keepalive packet to keep the drone from landing after 15s
+    pub fn send_keepalive(&mut self) {
+        self.send_control_command("keepalive", RESPONSE_TIMEOUT);
+    }
+
+    pub fn turn_motor_on(&mut self) {
+        self.send_control_command("motoron", RESPONSE_TIMEOUT);
+    }
+
+    pub fn turn_motor_off(&mut self) {
+        self.send_control_command("motoroff", RESPONSE_TIMEOUT);
+    }
+
+    pub fn initiate_throw_takeoff(&mut self) {
+        self.send_control_command("throwfly", RESPONSE_TIMEOUT);
+    }
+
+    pub fn takeoff(&mut self) {
+        self.send_control_command("takeoff", TAKEOFF_TIMEOUT);
+        self.is_flying = true;
+    }
+
+    pub fn land(&mut self) {
+        self.send_control_command("land", RESPONSE_TIMEOUT);
+        self.is_flying = false;
+    }
+
+    // pub fn streamon(&mut self) {
+
+    // }
 }
 
 #[cfg(test)]

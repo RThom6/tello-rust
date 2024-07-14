@@ -1,5 +1,7 @@
 use tello_rust::Drone;
 
 fn main() {
-    Drone::new();
+    let mut drone = Drone::new();
+
+    drone.connect();
 }
