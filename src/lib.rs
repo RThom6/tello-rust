@@ -141,18 +141,14 @@ impl Drone {
     // Send command
     // Option doesn't really make sense, will sort later - Nvm note to self, was Option as i wanted None to be valid
     fn send_command_with_return(&mut self, command: &str, timeout: u64) -> Option<String> {
-        // THERE IS AN ERROR WITH THIS, WILL FIX IT IN THE MORNING
-        //
         let time_since_last_command = Instant::now().duration_since(self.last_command_time);
         if TIME_BTW_COMMANDS.min(time_since_last_command.as_secs_f64()) != TIME_BTW_COMMANDS {
             println!(
                 "Command {} executed too soon, waiting {} seconds",
                 command, TIME_BTW_COMMANDS
             );
-            thread::sleep(Duration::from_secs(1));
+            thread::sleep(Duration::from_secs_f64(TIME_BTW_COMMANDS));
         }
-
-        // Insert time since command check
 
         let timestamp = Instant::now();
 
@@ -172,7 +168,7 @@ impl Drone {
                 return Some(temp);
             }
 
-            if Instant::now().duration_since(timestamp).as_secs() > timeout {
+            if Instant::now().duration_since(timestamp).as_secs() >= timeout {
                 println!("CONFUSED");
                 // Timeout handling
                 let temp = format!(
@@ -461,9 +457,38 @@ impl Drone {
         self.is_flying = false;
     }
 
-    // pub fn streamon(&mut self) {
+    // Turn on video streaming
+    pub fn streamon(&mut self) {
+        // UDP port magic need to implement
+        self.send_control_command("streamon", RESPONSE_TIMEOUT);
+        self.stream_on = true;
+    }
 
-    // }
+    // Turn off video streaming
+    pub fn streamoff(&mut self) {
+        self.send_control_command("streamoff", RESPONSE_TIMEOUT);
+        self.stream_on = false;
+
+        // NEED TO IMPLEMENT BACKGROUND FRAME READ
+        // if self.background_frame_read != None {
+        //     self.background_frame_read.stop();
+        //     self.background_frame_read = None;
+        // }
+    }
+
+    // Stop all motors immediately
+    pub fn emergency(&mut self) {
+        self.send_command_without_return("emergency");
+        self.is_flying = false;
+    }
+
+    /// Move in any chosen direction\n
+    /// direction: up, down, left, right, forward or back\n
+    /// x: 20-500
+    pub fn move_any(&mut self, direction: &str, x: i32) {
+        self.send_control_command(format!("{} {}", direction, x).as_str(), RESPONSE_TIMEOUT);
+    }
+
     pub fn rotate_clockwise(&mut self, distance: i32) {
         self.send_control_command(format!("cw {}", distance).as_str(), RESPONSE_TIMEOUT);
     }
