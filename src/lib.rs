@@ -489,8 +489,80 @@ impl Drone {
         self.send_control_command(format!("{} {}", direction, x).as_str(), RESPONSE_TIMEOUT);
     }
 
-    pub fn rotate_clockwise(&mut self, distance: i32) {
-        self.send_control_command(format!("cw {}", distance).as_str(), RESPONSE_TIMEOUT);
+    /// Move up
+    /// x: 20-500 in cm
+    pub fn move_up(&mut self, x: i32) {
+        self.move_any("up", x);
+    }
+
+    /// Move down
+    /// x: 20-500 in cm
+    pub fn move_down(&mut self, x: i32) {
+        self.move_any("down", x);
+    }
+
+    /// Move left
+    /// x: 20-500 in cm
+    pub fn move_left(&mut self, x: i32) {
+        self.move_any("left", x);
+    }
+
+    /// Move right
+    /// x: 20-500 in cm
+    pub fn move_right(&mut self, x: i32) {
+        self.move_any("right", x);
+    }
+
+    /// Move forward
+    /// x: 20-500 in cm
+    pub fn move_forward(&mut self, x: i32) {
+        self.move_any("forward", x);
+    }
+
+    /// Move back
+    /// x: 20-500 in cm
+    pub fn move_back(&mut self, x: i32) {
+        self.move_any("back", x);
+    }
+
+    /// Rotate x degree clockwise
+    pub fn rotate_clockwise(&mut self, x: i32) {
+        self.send_control_command(&format!("cw {}", x), RESPONSE_TIMEOUT);
+    }
+
+    /// Rotate x degree counter-clockwise
+    pub fn rotate_counter_clockwise(&mut self, x: i32) {
+        self.send_control_command(&format!("ccw {}", x), RESPONSE_TIMEOUT);
+    }
+
+    /// Do a flip maneuver, helper for flip_x functions
+    pub fn flip(&mut self, direction: &str) {
+        self.send_control_command(&format!("flip {}", direction), RESPONSE_TIMEOUT);
+    }
+
+    /// Flip left
+    pub fn flip_left(&mut self) {
+        self.flip("l");
+    }
+
+    /// Flip right
+    pub fn flip_right(&mut self) {
+        self.flip("r");
+    }
+
+    /// Flip forward
+    pub fn flip_forward(&mut self) {
+        self.flip("f");
+    }
+
+    /// Flip backwards
+    pub fn flip_back(&mut self) {
+        self.flip("b");
+    }
+
+    pub fn go_xyz_speed(&mut self, x: i32, y: i32, z: i32, speed: i32) {
+        let cmd = format!("go {} {} {} {}", x, y, z, speed);
+        self.send_control_command(&cmd, RESPONSE_TIMEOUT);
     }
 }
 
