@@ -143,13 +143,14 @@ impl Drone {
     fn send_command_with_return(&mut self, command: &str, timeout: u64) -> Option<String> {
         // THERE IS AN ERROR WITH THIS, WILL FIX IT IN THE MORNING
         //
-        // let time_since_last_command = Instant::now().duration_since(self.last_command_time);
-        // if TIME_BTW_COMMANDS.min(time_since_last_command.as_secs_f64()) != TIME_BTW_COMMANDS {
-        //     println!(
-        //         "Command {} executed too soon, waiting {} seconds",
-        //         command, TIME_BTW_COMMANDS
-        //     );
-        // }
+        let time_since_last_command = Instant::now().duration_since(self.last_command_time);
+        if TIME_BTW_COMMANDS.min(time_since_last_command.as_secs_f64()) != TIME_BTW_COMMANDS {
+            println!(
+                "Command {} executed too soon, waiting {} seconds",
+                command, TIME_BTW_COMMANDS
+            );
+            thread::sleep(Duration::from_secs(1));
+        }
 
         // Insert time since command check
 
@@ -160,13 +161,14 @@ impl Drone {
             .expect("Sending command failed");
 
         loop {
-            let value = self.shared_response.lock().unwrap();
+            let mut value = self.shared_response.lock().unwrap();
 
             if !value.is_none() {
                 self.last_command_time = Instant::now();
                 let temp = value.clone();
                 let mut temp = temp.unwrap();
                 temp = String::from(temp.trim_end_matches("\r\n"));
+                *value = None;
                 return Some(temp);
             }
 
@@ -177,6 +179,7 @@ impl Drone {
                     "Aborting command '{}'. Did not receive a response after {} seconds",
                     command, timeout
                 );
+                *value = None;
                 return Some(temp);
             }
 
@@ -194,6 +197,8 @@ impl Drone {
             if response.to_lowercase().contains("ok") {
                 println!("{}", response);
                 return true;
+            } else {
+                println!("{}", response);
             }
 
             // println!("tried {} times: {}", i, response);
@@ -459,6 +464,9 @@ impl Drone {
     // pub fn streamon(&mut self) {
 
     // }
+    pub fn rotate_clockwise(&mut self, distance: i32) {
+        self.send_control_command(format!("cw {}", distance).as_str(), RESPONSE_TIMEOUT);
+    }
 }
 
 #[cfg(test)]
