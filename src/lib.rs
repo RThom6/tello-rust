@@ -95,22 +95,7 @@ impl Drone {
     }
 }
 
-// fn start_receiver_thread(socket: &UdpSocket, response_receiver: Arc<Mutex<Option<String>>>) {
-//     thread::spawn(move || {
-//         let socket = socket.clone();
-//         let mut buf = [0; 1024];
-
-//         loop {
-//             let (amt, _src) = socket.recv_from(&mut buf).expect("Didn't receive message");
-//             let received = String::from_utf8_lossy(&buf[..amt]);
-
-//             let mut value = response_receiver.lock().unwrap();
-//             *value = Some(received.to_string());
-//         }
-//     });
-// }
-
-// Edit once addr magic figured out, udp_state_receiver() method in djitellopy
+// Need to add state parsing
 fn start_state_receiver_thread(response_receiver: Arc<Mutex<Option<String>>>) {
     thread::spawn(move || {
         let socket = UdpSocket::bind("0.0.0.0:8890").expect("Couldn't bind receiver socket");
@@ -560,8 +545,54 @@ impl Drone {
         self.flip("b");
     }
 
+    /// Fly to xyz relative to current position\n
+    /// Speed in cm/s\n
+    /// Argument ranges:\n
+    /// x: -500 - 500\n
+    /// y: -500 - 500\n
+    /// z: -500 - 500\n
+    /// speed 10 - 100
     pub fn go_xyz_speed(&mut self, x: i32, y: i32, z: i32, speed: i32) {
         let cmd = format!("go {} {} {} {}", x, y, z, speed);
+        self.send_control_command(&cmd, RESPONSE_TIMEOUT);
+    }
+
+    /// Fly to x2 y2 z2 in a curve via x1 y1 z1, speed is travelling speed in cm/s\n
+    /// Both points relative to current position\n
+    /// Argument value ranges:\n
+    /// x1: -500 - 500\n
+    /// y1: -500 - 500\n
+    /// z1: -500 - 500\n
+    /// x2: -500 - 500\n
+    /// y2: -500 - 500\n
+    /// z2: -500 - 500\n
+    /// speed: 10 - 60
+    pub fn curve_xyz_speed(
+        &mut self,
+        x1: i32,
+        y1: i32,
+        z1: i32,
+        x2: i32,
+        y2: i32,
+        z2: i32,
+        speed: i32,
+    ) {
+        let cmd = format!("curve {} {} {} {} {} {} {}", x1, y1, z1, x2, y2, z2, speed);
+        self.send_control_command(&cmd, RESPONSE_TIMEOUT);
+    }
+}
+
+// MISSION PAD METHODS
+impl Drone {
+    /// Fly to xyz relative to mission pad with id: mid\n
+    /// Speed in cm/s\n
+    /// Argument value ranges:\n
+    /// x: -500 - 500\n
+    /// y: -500 - 500\n
+    /// z: -500 - 500\n
+    /// mid: 1 - 8
+    pub fn go_xyz_speed_mid(&mut self, x: i32, y: i32, z: i32, mid: i32) {
+        let cmd = format!("go {} {} {} m{}", x, y, z, mid);
         self.send_control_command(&cmd, RESPONSE_TIMEOUT);
     }
 }
