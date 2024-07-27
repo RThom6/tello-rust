@@ -1,9 +1,15 @@
+// Rust wrapper to interact with the Ryze Tello drone using the official Tello api
+// By Ryan Thomas: https://github.com/RThom6
+// Essentially a translation of DJITelloPy into Rust: https://github.com/damiafuentes/DJITelloPy/tree/master
+//
+// Tello API documentation:
+// [1.3](https://dl-cdn.ryzerobotics.com/downloads/tello/20180910/Tello%20SDK%20Documentation%20EN_1.3.pdf),
+// [2.0 with EDU-only commands](https://dl-cdn.ryzerobotics.com/downloads/Tello/Tello%20SDK%202.0%20User%20Guide.pdf)
+
 use log::{debug, error};
 use std::{
     collections::HashMap,
-    error::Error,
     net::UdpSocket,
-    process,
     sync::{Arc, Mutex},
     thread,
     time::{Duration, Instant},
@@ -77,10 +83,10 @@ impl Drone {
             }
         });
 
-        // Shared state response variable protected by mutex
-        let state_response = Arc::new(Mutex::new(None::<String>));
-        let state_receiver = Arc::clone(&state_response);
-        start_state_receiver_thread(state_receiver);
+        // // Shared state response variable protected by mutex
+        // let state_response = Arc::new(Mutex::new(None::<String>));
+        // let state_receiver = Arc::clone(&state_response);
+        // start_state_receiver_thread(state_receiver);
 
         Drone {
             socket,
@@ -94,26 +100,26 @@ impl Drone {
     }
 }
 
-// Need to add state parsing
-fn start_state_receiver_thread(response_receiver: Arc<Mutex<Option<String>>>) {
-    thread::spawn(move || {
-        let socket = UdpSocket::bind("0.0.0.0:8890").expect("Couldn't bind receiver socket");
-        let mut buf = [0; 1024];
-
-        loop {
-            let (amt, _src) = socket.recv_from(&mut buf).expect("Didn't receive message");
-            let received = String::from_utf8_lossy(&buf[..amt]);
-
-            let mut value = response_receiver.lock().unwrap();
-            *value = Some(received.to_string());
-        }
-    });
-}
-
 /**
  * Private command methods for API
  */
 impl Drone {
+    // Need to add state parsing
+    fn start_state_receiver_thread(&mut self, response_receiver: Arc<Mutex<Option<String>>>) {
+        thread::spawn(move || {
+            let socket = UdpSocket::bind(TELLO_STATE_ADDR).expect("Couldn't bind receiver socket");
+            let mut buf = [0; 1024];
+
+            loop {
+                let (amt, _src) = socket.recv_from(&mut buf).expect("Didn't receive message");
+                let received = String::from_utf8_lossy(&buf[..amt]);
+
+                let mut value = response_receiver.lock().unwrap();
+                *value = Some(received.to_string());
+            }
+        });
+    }
+
     /// Send a command without waiting for a return
     fn send_command_without_return(&self, command: &str) {
         self.socket
@@ -188,6 +194,7 @@ impl Drone {
         return false;
     }
 
+    /// Private function to handle sending and parsing read commands
     fn send_read_command(&mut self, command: &str) -> String {
         let response = self
             .send_command_with_return(command, RESPONSE_TIMEOUT)
@@ -304,7 +311,7 @@ impl Drone {
         }
     }
 
-    // Z axis speed
+    /// X axis speed
     pub fn get_speed_x(&self) -> i32 {
         match self.get_state_field("vgx") {
             StateValue::Int(i) => *i,
@@ -312,7 +319,7 @@ impl Drone {
         }
     }
 
-    // Y axis speed
+    /// Y axis speed
     pub fn get_speed_y(&self) -> i32 {
         match self.get_state_field("vgy") {
             StateValue::Int(i) => *i,
@@ -320,6 +327,7 @@ impl Drone {
         }
     }
 
+    /// Z axis speed
     pub fn get_speed_z(&self) -> i32 {
         match self.get_state_field("vgz") {
             StateValue::Int(i) => *i,
@@ -327,7 +335,7 @@ impl Drone {
         }
     }
 
-    // X axis acceleration
+    /// X axis acceleration
     pub fn get_acceleration_x(&self) -> f64 {
         match self.get_state_field("agx") {
             StateValue::Float(i) => *i,
@@ -335,7 +343,7 @@ impl Drone {
         }
     }
 
-    // Y axis acceleration
+    /// Y axis acceleration
     pub fn get_acceleration_y(&self) -> f64 {
         match self.get_state_field("agy") {
             StateValue::Float(i) => *i,
@@ -343,7 +351,7 @@ impl Drone {
         }
     }
 
-    // Z axis acceleration
+    /// Z axis acceleration
     pub fn get_acceleration_z(&self) -> f64 {
         match self.get_state_field("agz") {
             StateValue::Float(i) => *i,
@@ -351,7 +359,7 @@ impl Drone {
         }
     }
 
-    // Get lowest temperature
+    /// Get lowest temperature
     pub fn get_lowest_temperature(&self) -> i32 {
         match self.get_state_field("templ") {
             StateValue::Int(i) => *i,
@@ -359,7 +367,7 @@ impl Drone {
         }
     }
 
-    // Get highest temperature
+    /// Get highest temperature
     pub fn get_highest_temperature(&self) -> i32 {
         match self.get_state_field("temph") {
             StateValue::Int(i) => *i,
@@ -419,6 +427,10 @@ impl Drone {
 // Public user command methods
 impl Drone {
     pub fn connect(&mut self) {
+        // Shared state response variable protected by mutex
+        let state_response = Arc::new(Mutex::new(None::<String>));
+        let state_receiver = Arc::clone(&state_response);
+        self.start_state_receiver_thread(state_receiver);
         self.send_control_command("command", RESPONSE_TIMEOUT);
 
         let reps = 20;
