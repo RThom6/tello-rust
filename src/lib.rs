@@ -367,7 +367,7 @@ impl Drone {
         }
     }
 
-    // Get average temperature
+    /// Get average temperature
     pub fn get_temperature(&self) -> i32 {
         let templ = self.get_lowest_temperature();
         let temph = self.get_highest_temperature();
@@ -375,43 +375,43 @@ impl Drone {
         templ + temph
     }
 
-    // Get current height in cm
-    fn get_height(&self) -> i32 {
+    /// Get current height in cm
+    pub fn get_height(&self) -> i32 {
         match self.get_state_field("h") {
             StateValue::Int(i) => *i,
             _ => panic!("Uh oh"),
         }
     }
 
-    // Get current distance value from TOF in cm
-    fn get_distance_tof(&self) -> i32 {
+    /// Get current distance value from TOF in cm
+    pub fn get_distance_tof(&self) -> i32 {
         match self.get_state_field("tof") {
             StateValue::Int(i) => *i,
             _ => panic!("Uh oh"),
         }
     }
 
-    // Get current barometer measurement in cm -> absolute height
-    fn get_barometer(&self) -> f64 {
+    /// Get current barometer measurement in cm -> absolute height
+    pub fn get_barometer(&self) -> f64 {
         match self.get_state_field("baro") {
             StateValue::Float(i) => *i * 100.0,
             _ => panic!("Uh oh"),
         }
     }
 
-    // Get the time the motors have been active in seconds
-    fn get_flight_time(&self) -> i32 {
+    /// Get the time the motors have been active in seconds
+    pub fn get_flight_time(&self) -> i32 {
         match self.get_state_field("time") {
             StateValue::Int(i) => *i,
             _ => panic!("Uh oh"),
         }
     }
 
-    fn get_udp_video_address(&self) {
+    pub fn get_udp_video_address(&self) {
         // Placeholder, uses global variables in python implementation, will sort what this needs soon
     }
 
-    fn get_frame_read(&self) {
+    pub fn get_frame_read(&self) {
         // Also placeholder for now
     }
 }
@@ -818,8 +818,8 @@ impl Drone {
         return attitude;
     }
 
-    pub fn query_barometer(&mut self) -> i32 {
-        self.send_read_command_int("baro?") * 100
+    pub fn query_barometer(&mut self) -> f64 {
+        self.send_read_command_float("baro?") * 100.0
     }
 
     pub fn query_distance_tof(&mut self) -> f64 {
