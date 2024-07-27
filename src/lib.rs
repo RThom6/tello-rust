@@ -9,14 +9,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-const TELLO_ADDR: &'static str = "192.168.10.1:8889"; // Need to change later
-const TELLO_STATE_ADDR: &'static str = "0.0.0.0:8890"; // Would this not be the same ip as the former?
-                                                       // 'Any' addr not important if only want working for 1 drone surely
+const TELLO_ADDR: &'static str = "192.168.10.1:8889";
+const TELLO_STATE_ADDR: &'static str = "0.0.0.0:8890";
 const RESPONSE_TIMEOUT: u64 = 7; // Seconds
 const TAKEOFF_TIMEOUT: u64 = 20; // Seconds
 const TIME_BTW_COMMANDS: f64 = 0.1; // Seconds
 
-// State field types: states not here are all strings
+// State field types: states not named here are all strings
 const INT_STATE_FIELDS: &[&str] = &[
     "mid", "x", "y", "z", "pitch", "roll", "yaw", "vgx", "vgy", "vgz", "templ", "temph", "tof",
     "h", "bat", "time",
@@ -580,6 +579,101 @@ impl Drone {
         let cmd = format!("curve {} {} {} {} {} {} {}", x1, y1, z1, x2, y2, z2, speed);
         self.send_control_command(&cmd, RESPONSE_TIMEOUT);
     }
+
+    /// Set speed in cm/s
+    pub fn set_speed(&mut self, speed: i32) {
+        let cmd = format!("speed {}", speed);
+        self.send_control_command(&cmd, RESPONSE_TIMEOUT);
+    }
+
+    /// Send RC control via four channels. Command is sent every self.TIME_BTW_RC_CONTROL_COMMANDS seconds.
+    /// Argument parameters:
+    /// left_right_velocity: -100~100 (left/right)
+    /// forward_backward_velocity: -100~100 (forward/backward)
+    /// up_down_velocity: -100~100 (up/down)
+    /// yaw_velocity: -100~100 (yaw)
+    pub fn send_rc_control(
+        &mut self,
+        left_right_velocity: i32,
+        forward_backward_velocity: i32,
+        up_down_velocity: i32,
+        yaw_velocity: i32,
+    ) {
+        let clamp100 = |x: i32| -> i32 { x.max(-100).min(100) };
+
+        if Instant::now()
+            .duration_since(self.last_command_time)
+            .as_secs_f64()
+            > TIME_BTW_COMMANDS
+        {
+            self.last_command_time = Instant::now();
+            let cmd = format!(
+                "rc {} {} {} {}",
+                clamp100(left_right_velocity),
+                clamp100(forward_backward_velocity),
+                clamp100(up_down_velocity),
+                clamp100(yaw_velocity)
+            );
+            self.send_command_without_return(&cmd);
+        }
+    }
+
+    /// Set the WiFi SSID and Password for the Tello, will cause a reboot
+    pub fn set_wifi_credentials(&mut self, ssid: &str, password: &str) {
+        let cmd = format!("wifi {} {}", ssid, password);
+        self.send_control_command(&cmd, RESPONSE_TIMEOUT);
+    }
+
+    /// Only works on Tello-EDU
+    /// Connects to a WiFi with the SSID and Password
+    pub fn connect_to_wifi(&mut self, ssid: &str, password: &str) {
+        let cmd = format!("ap {} {}", ssid, password);
+        self.send_control_command(&cmd, RESPONSE_TIMEOUT);
+    }
+
+    /// Can change the ports of the Tello drone's state and video packets
+    /// Not supported in this library
+    pub fn set_network_ports(&mut self, state_packet_port: i32, video_stream_port: i32) {
+        let cmd = format!("port {} {}", state_packet_port, video_stream_port);
+        self.send_control_command(&cmd, RESPONSE_TIMEOUT);
+    }
+
+    /// Reboots the drone
+    pub fn reboot(&mut self) {
+        self.send_command_without_return("reboot");
+    }
+
+    /// Sets the bitrate of the video stream\n
+    /// Only supports MBPS as i32 in the range of [0, 5] where 0 is auto
+    pub fn set_video_bitrate(&mut self, bitrate: i32) {
+        let cmd = format!("setbitrate {}", bitrate);
+        self.send_control_command(&cmd, RESPONSE_TIMEOUT);
+    }
+
+    /// Sets the resolution of the video stream\n
+    /// 'low' for 480P\n
+    /// 'high' for 720P\n
+    pub fn set_video_resolution(&mut self, resolution: &str) {
+        let cmd = format!("setresolution {}", resolution);
+        self.send_control_command(&cmd, RESPONSE_TIMEOUT);
+    }
+
+    /// Set the frames per second of the video stream\n
+    /// 'low' for 5 fps\n
+    /// 'middle' for 15 fps\n
+    /// 'high' for 30 fps\n
+    pub fn set_video_fps(&mut self, fps: &str) {
+        let cmd = format!("setfps {}", fps);
+        self.send_control_command(&cmd, RESPONSE_TIMEOUT);
+    }
+
+    /// Selects one of 2 cameras for streaming\n
+    /// Forward camera is the regular 1080x720 colour camera\n
+    /// Downward camera is a grey-only 320x240 IR-sensitive camera\n
+    pub fn set_video_direction(&mut self, direction: i32) {
+        let cmd = format!("downvision {}", direction);
+        self.send_control_command(&cmd, RESPONSE_TIMEOUT);
+    }
 }
 
 // MISSION PAD METHODS
@@ -622,6 +716,107 @@ impl Drone {
             x1, y1, z1, x2, y2, z2, speed, mid
         );
         self.send_control_command(&cmd, RESPONSE_TIMEOUT);
+    }
+
+    pub fn enable_mission_pads(&mut self) {
+        self.send_control_command("mon", RESPONSE_TIMEOUT);
+    }
+
+    pub fn disable_mission_pads(&mut self) {
+        self.send_control_command("moff", RESPONSE_TIMEOUT);
+    }
+
+    pub fn set_mission_pad_detection_direction(&mut self, direction: i32) {
+        let cmd = format!("mdirection {}", direction);
+        self.send_control_command(&cmd, RESPONSE_TIMEOUT);
+    }
+}
+
+// QUERY COMMANDS, USUALLY SLOWER THAN GETTERS
+impl Drone {
+    pub fn query_speed(&mut self) -> i32 {
+        self.send_read_command_int("speed?")
+    }
+
+    pub fn query_battery(&mut self) -> i32 {
+        self.send_read_command_int("battery?")
+    }
+
+    pub fn query_flight_time(&mut self) -> i32 {
+        self.send_read_command_int("time?")
+    }
+
+    pub fn query_height(&mut self) -> i32 {
+        self.send_read_command_int("height?")
+    }
+
+    pub fn query_temperature(&mut self) -> i32 {
+        self.send_read_command_int("temp?")
+    }
+
+    /// Query IMU attitude data\n
+    /// Using get_pitch, get_roll and get_yaw is usually faster\n
+    /// Returns Map with {'pitch': i32, 'roll': int, 'yaw': i32}
+    pub fn query_attitude(&mut self) -> HashMap<String, i32> {
+        let response = self.send_read_command("attitude?");
+
+        let mut attitude: HashMap<String, i32> = HashMap::new();
+
+        for field in response.split(';') {
+            let split: Vec<&str> = field.split(':').collect();
+
+            if split.len() < 2 {
+                continue;
+            }
+
+            let key = split[0].to_string();
+            let value_str = split[1];
+            let value: StateValue = match self.state_field_converter(&key, value_str) {
+                Ok(v) => v,
+                Err(e) => {
+                    debug!(
+                        "Error parsing state value for {}: {} to {}",
+                        key, value_str, e
+                    );
+                    error!("{}", e);
+                    continue;
+                }
+            };
+
+            let value_i32 = match value {
+                StateValue::Int(i) => i,
+                _ => panic!("Uh oh"),
+            };
+
+            attitude.insert(key, value_i32);
+        }
+
+        return attitude;
+    }
+
+    pub fn query_barometer(&mut self) -> i32 {
+        self.send_read_command_int("baro?") * 100
+    }
+
+    pub fn query_distance_tof(&mut self) -> f64 {
+        let tof = self.send_read_command("tof?");
+        tof.trim_end_matches("mm").parse::<f64>().unwrap_or(0.0) / 10.0
+    }
+
+    pub fn query_wifi_signal_noise_ratio(&mut self) -> String {
+        self.send_read_command("wifi?")
+    }
+
+    pub fn query_sdk_version(&mut self) -> String {
+        self.send_read_command("sdk?")
+    }
+
+    pub fn query_serial_number(&mut self) -> String {
+        self.send_read_command("sn?")
+    }
+
+    pub fn query_active(&mut self) -> String {
+        self.send_read_command("active?")
     }
 }
 
