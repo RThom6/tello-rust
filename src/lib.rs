@@ -39,6 +39,7 @@ enum StateValue {
 }
 
 impl Drone {
+    /// Instantiate a new Drone object
     pub fn new() -> Drone {
         let socket = UdpSocket::bind("0.0.0.0:8889")
             .expect(format!("couldn't bind to address {}", TELLO_ADDR).as_str());
@@ -46,7 +47,6 @@ impl Drone {
         socket
             .set_read_timeout(Some(Duration::from_secs(RESPONSE_TIMEOUT)))
             .expect("set_read_timeout call failed");
-        // let socket = Arc::new(Mutex::new(socket));
         let socket_recv = socket.try_clone().unwrap();
 
         // Shared response variable protected by mutex
@@ -114,6 +114,7 @@ fn start_state_receiver_thread(response_receiver: Arc<Mutex<Option<String>>>) {
  * Private command methods for API
  */
 impl Drone {
+    /// Send a command without waiting for a return
     fn send_command_without_return(&self, command: &str) {
         self.socket
             .send_to(command.as_bytes(), TELLO_ADDR)
@@ -122,8 +123,7 @@ impl Drone {
         println!("Send Command {}", command);
     }
 
-    // Send command
-    // Option doesn't really make sense, will sort later - Nvm note to self, was Option as i wanted None to be valid
+    /// Send command and wait for a return
     fn send_command_with_return(&mut self, command: &str, timeout: u64) -> Option<String> {
         let time_since_last_command = Instant::now().duration_since(self.last_command_time);
         if TIME_BTW_COMMANDS.min(time_since_last_command.as_secs_f64()) != TIME_BTW_COMMANDS {
@@ -167,7 +167,7 @@ impl Drone {
         }
     }
 
-    // Sends control command to Tello and waits for a response
+    /// Sends control command to Tello and waits for a response
     fn send_control_command(&mut self, command: &str, timeout: u64) -> bool {
         for _ in 0..self.retry_count {
             let response = self
@@ -202,12 +202,12 @@ impl Drone {
         return response;
     }
 
-    // Send command to tello and wait for response, parses response into an integer
+    /// Send command to tello and wait for response, parses response into an integer
     fn send_read_command_int(&mut self, command: &str) -> i32 {
         self.send_read_command(command).parse::<i32>().unwrap()
     }
 
-    // Send command to tello and wait for response, parses response into float
+    /// Send command to tello and wait for response, parses response into float
     fn send_read_command_float(&mut self, command: &str) -> f64 {
         self.send_read_command(command).parse::<f64>().unwrap()
     }
@@ -254,7 +254,7 @@ impl Drone {
         true // Placeholder so vs doesnt scream at me
     }
 
-    // Converts fields to the correct type based on field key
+    /// Converts fields to the correct type based on field key
     fn state_field_converter(&mut self, key: &str, value_str: &str) -> Result<StateValue, String> {
         if INT_STATE_FIELDS.contains(&key) {
             value_str
@@ -271,7 +271,7 @@ impl Drone {
         }
     }
 
-    // Get a specific state field by name
+    /// Get a specific state field by name
     fn get_state_field(&self, key: &str) -> &StateValue {
         if !self.state.contains_key(&key.to_string()) {
             error!("Could not get state property: {}", key);
@@ -280,7 +280,7 @@ impl Drone {
         self.state.get(&key.to_string()).unwrap()
     }
 
-    // Returns pitch in degree
+    /// Returns pitch in degree
     pub fn get_pitch(&self) -> i32 {
         match self.get_state_field("pitch") {
             StateValue::Int(i) => *i,
@@ -288,6 +288,7 @@ impl Drone {
         }
     }
 
+    /// Returns roll in degree
     pub fn get_roll(&self) -> i32 {
         match self.get_state_field("roll") {
             StateValue::Int(i) => *i,
@@ -295,6 +296,7 @@ impl Drone {
         }
     }
 
+    /// Returns yaw in degree
     pub fn get_yaw(&self) -> i32 {
         match self.get_state_field("yaw") {
             StateValue::Int(i) => *i,
@@ -326,25 +328,25 @@ impl Drone {
     }
 
     // X axis acceleration
-    pub fn get_acceleration_x(&self) -> i32 {
+    pub fn get_acceleration_x(&self) -> f64 {
         match self.get_state_field("agx") {
-            StateValue::Int(i) => *i,
+            StateValue::Float(i) => *i,
             _ => panic!("Uh oh scoob"),
         }
     }
 
     // Y axis acceleration
-    pub fn get_acceleration_y(&self) -> i32 {
+    pub fn get_acceleration_y(&self) -> f64 {
         match self.get_state_field("agy") {
-            StateValue::Int(i) => *i,
+            StateValue::Float(i) => *i,
             _ => panic!("Uh oh scoob"),
         }
     }
 
     // Z axis acceleration
-    pub fn get_acceleration_z(&self) -> i32 {
+    pub fn get_acceleration_z(&self) -> f64 {
         match self.get_state_field("agz") {
-            StateValue::Int(i) => *i,
+            StateValue::Float(i) => *i,
             _ => panic!("Uh oh scoob"),
         }
     }
@@ -390,9 +392,9 @@ impl Drone {
     }
 
     // Get current barometer measurement in cm -> absolute height
-    fn get_barometer(&self) -> i32 {
+    fn get_barometer(&self) -> f64 {
         match self.get_state_field("baro") {
-            StateValue::Int(i) => *i * 100,
+            StateValue::Float(i) => *i * 100.0,
             _ => panic!("Uh oh"),
         }
     }
