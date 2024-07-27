@@ -281,72 +281,94 @@ impl Drone {
     }
 
     // Returns pitch in degree
-    fn get_pitch(&self) -> &StateValue {
-        self.get_state_field("pitch")
+    pub fn get_pitch(&self) -> i32 {
+        match self.get_state_field("pitch") {
+            StateValue::Int(i) => *i,
+            _ => panic!("Uh oh scoob"),
+        }
     }
 
-    fn get_roll(&self) -> &StateValue {
-        self.get_state_field("roll")
+    pub fn get_roll(&self) -> i32 {
+        match self.get_state_field("roll") {
+            StateValue::Int(i) => *i,
+            _ => panic!("Uh oh scoob"),
+        }
     }
 
-    fn get_yaw(&self) -> &StateValue {
-        self.get_state_field("yaw")
+    pub fn get_yaw(&self) -> i32 {
+        match self.get_state_field("yaw") {
+            StateValue::Int(i) => *i,
+            _ => panic!("Uh oh scoob"),
+        }
     }
 
     // Z axis speed
-    fn get_speed_x(&self) -> &StateValue {
-        self.get_state_field("vgx")
+    pub fn get_speed_x(&self) -> i32 {
+        match self.get_state_field("vgx") {
+            StateValue::Int(i) => *i,
+            _ => panic!("Uh oh scoob"),
+        }
     }
 
     // Y axis speed
-    fn get_speed_y(&self) -> &StateValue {
-        self.get_state_field("vgy")
+    pub fn get_speed_y(&self) -> i32 {
+        match self.get_state_field("vgy") {
+            StateValue::Int(i) => *i,
+            _ => panic!("Uh oh scoob"),
+        }
     }
 
-    fn get_speed_z(&self) -> &StateValue {
-        self.get_state_field("vgz")
+    pub fn get_speed_z(&self) -> i32 {
+        match self.get_state_field("vgz") {
+            StateValue::Int(i) => *i,
+            _ => panic!("Uh oh scoob"),
+        }
     }
 
     // X axis acceleration
-    fn get_acceleration_x(&self) -> &StateValue {
-        self.get_state_field("agx")
+    pub fn get_acceleration_x(&self) -> i32 {
+        match self.get_state_field("agx") {
+            StateValue::Int(i) => *i,
+            _ => panic!("Uh oh scoob"),
+        }
     }
 
     // Y axis acceleration
-    fn get_acceleration_y(&self) -> &StateValue {
-        self.get_state_field("agy")
+    pub fn get_acceleration_y(&self) -> i32 {
+        match self.get_state_field("agy") {
+            StateValue::Int(i) => *i,
+            _ => panic!("Uh oh scoob"),
+        }
     }
 
     // Z axis acceleration
-    fn get_acceleration_z(&self) -> &StateValue {
-        self.get_state_field("agz")
+    pub fn get_acceleration_z(&self) -> i32 {
+        match self.get_state_field("agz") {
+            StateValue::Int(i) => *i,
+            _ => panic!("Uh oh scoob"),
+        }
     }
 
     // Get lowest temperature
-    fn get_lowest_temperature(&self) -> &StateValue {
-        self.get_state_field("templ")
+    pub fn get_lowest_temperature(&self) -> i32 {
+        match self.get_state_field("templ") {
+            StateValue::Int(i) => *i,
+            _ => panic!("Uh oh scoob"),
+        }
     }
 
     // Get highest temperature
-    fn get_highest_temperature(&self) -> &StateValue {
-        self.get_state_field("temph")
+    pub fn get_highest_temperature(&self) -> i32 {
+        match self.get_state_field("temph") {
+            StateValue::Int(i) => *i,
+            _ => panic!("Uh oh scoob"),
+        }
     }
 
     // Get average temperature
-    fn get_temperature(&self) -> i32 {
+    pub fn get_temperature(&self) -> i32 {
         let templ = self.get_lowest_temperature();
         let temph = self.get_highest_temperature();
-
-        // Is this... a sin?
-        // Change the type of templ and temph
-        let templ = match templ {
-            StateValue::Int(i) => *i,
-            _ => panic!("Uh oh scoob"),
-        };
-        let temph = match temph {
-            StateValue::Int(i) => *i,
-            _ => panic!("Uh oh scoob"),
-        };
 
         templ + temph
     }
