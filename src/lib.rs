@@ -35,9 +35,11 @@ pub struct Drone {
     retry_count: i32,
     last_command_time: Instant,
     shared_response: Arc<Mutex<Option<String>>>,
-    state: HashMap<String, StateValue>, //State hashmap, closest thing to python dict
+    shared_state: Arc<Mutex<HashMap<String, StateValue>>>, //State hashmap, closest thing to python dict
+    read_state: HashMap<String, StateValue>,
 }
 
+#[derive(Clone)]
 enum StateValue {
     Int(i32),
     Float(f64),
@@ -95,7 +97,8 @@ impl Drone {
             retry_count: 3,
             last_command_time: Instant::now(),
             shared_response,
-            state: HashMap::new(),
+            shared_state: Arc::new(Mutex::new(HashMap::new())),
+            read_state: HashMap::new(),
         }
     }
 }
@@ -104,8 +107,11 @@ impl Drone {
  * Private command methods for API
  */
 impl Drone {
-    // Need to add state parsing
-    fn start_state_receiver_thread(&mut self, response_receiver: Arc<Mutex<Option<String>>>) {
+    /// State receiver thread to run in background
+    fn start_state_receiver_thread(
+        &'static mut self,
+        response_receiver: Arc<Mutex<HashMap<String, StateValue>>>,
+    ) {
         thread::spawn(move || {
             let socket = UdpSocket::bind(TELLO_STATE_ADDR).expect("Couldn't bind receiver socket");
             let mut buf = [0; 1024];
@@ -114,8 +120,13 @@ impl Drone {
                 let (amt, _src) = socket.recv_from(&mut buf).expect("Didn't receive message");
                 let received = String::from_utf8_lossy(&buf[..amt]);
 
+                let state_map = match self.parse_state(&received) {
+                    Some(map) => map,
+                    None => continue,
+                };
+
                 let mut value = response_receiver.lock().unwrap();
-                *value = Some(received.to_string());
+                *value = state_map;
             }
         });
     }
@@ -219,7 +230,7 @@ impl Drone {
         self.send_read_command(command).parse::<f64>().unwrap()
     }
 
-    fn raise_result_error(&self, command: &str, response: &str) {
+    fn raise_result_error(&mut self, command: &str, response: &str) {
         let tries = 1 + self.retry_count;
         // need some replacement for the raise python macro, easy enough will sort it soon
     }
@@ -227,12 +238,14 @@ impl Drone {
 
 // State field methods
 impl Drone {
-    fn parse_state(&mut self, state_str: &str) -> bool {
+    fn parse_state(&mut self, state_str: &str) -> Option<HashMap<String, StateValue>> {
         let state_str = state_str.trim();
 
         if state_str.eq("ok") {
-            return false;
+            return None;
         }
+
+        let mut state_map: HashMap<String, StateValue> = HashMap::new();
 
         for field in state_str.split(';') {
             let split: Vec<&str> = field.split(':').collect();
@@ -255,10 +268,10 @@ impl Drone {
                 }
             };
 
-            self.state.insert(key, value);
+            state_map.insert(key, value);
         }
 
-        true // Placeholder so vs doesnt scream at me
+        return Some(state_map);
     }
 
     /// Converts fields to the correct type based on field key
@@ -279,16 +292,21 @@ impl Drone {
     }
 
     /// Get a specific state field by name
-    fn get_state_field(&self, key: &str) -> &StateValue {
-        if !self.state.contains_key(&key.to_string()) {
+    fn get_state_field(&mut self, key: &str) -> &StateValue {
+        // This may be sacreligious
+        // Clones the value of the r/w state variable then the lock is released
+        self.read_state = self.shared_state.lock().unwrap().clone();
+
+        // Checks whether our new state has the value sought after
+        if !self.read_state.contains_key(&key.to_string()) {
             error!("Could not get state property: {}", key);
         }
-
-        self.state.get(&key.to_string()).unwrap()
+        // Returns a reference to this value stored in read state
+        self.read_state.get(&key.to_string()).unwrap()
     }
 
     /// Returns pitch in degree
-    pub fn get_pitch(&self) -> i32 {
+    pub fn get_pitch(&mut self) -> i32 {
         match self.get_state_field("pitch") {
             StateValue::Int(i) => *i,
             _ => panic!("Uh oh scoob"),
@@ -296,7 +314,7 @@ impl Drone {
     }
 
     /// Returns roll in degree
-    pub fn get_roll(&self) -> i32 {
+    pub fn get_roll(&mut self) -> i32 {
         match self.get_state_field("roll") {
             StateValue::Int(i) => *i,
             _ => panic!("Uh oh scoob"),
@@ -304,7 +322,7 @@ impl Drone {
     }
 
     /// Returns yaw in degree
-    pub fn get_yaw(&self) -> i32 {
+    pub fn get_yaw(&mut self) -> i32 {
         match self.get_state_field("yaw") {
             StateValue::Int(i) => *i,
             _ => panic!("Uh oh scoob"),
@@ -312,7 +330,7 @@ impl Drone {
     }
 
     /// X axis speed
-    pub fn get_speed_x(&self) -> i32 {
+    pub fn get_speed_x(&mut self) -> i32 {
         match self.get_state_field("vgx") {
             StateValue::Int(i) => *i,
             _ => panic!("Uh oh scoob"),
@@ -320,7 +338,7 @@ impl Drone {
     }
 
     /// Y axis speed
-    pub fn get_speed_y(&self) -> i32 {
+    pub fn get_speed_y(&mut self) -> i32 {
         match self.get_state_field("vgy") {
             StateValue::Int(i) => *i,
             _ => panic!("Uh oh scoob"),
@@ -328,7 +346,7 @@ impl Drone {
     }
 
     /// Z axis speed
-    pub fn get_speed_z(&self) -> i32 {
+    pub fn get_speed_z(&mut self) -> i32 {
         match self.get_state_field("vgz") {
             StateValue::Int(i) => *i,
             _ => panic!("Uh oh scoob"),
@@ -336,7 +354,7 @@ impl Drone {
     }
 
     /// X axis acceleration
-    pub fn get_acceleration_x(&self) -> f64 {
+    pub fn get_acceleration_x(&mut self) -> f64 {
         match self.get_state_field("agx") {
             StateValue::Float(i) => *i,
             _ => panic!("Uh oh scoob"),
@@ -344,7 +362,7 @@ impl Drone {
     }
 
     /// Y axis acceleration
-    pub fn get_acceleration_y(&self) -> f64 {
+    pub fn get_acceleration_y(&mut self) -> f64 {
         match self.get_state_field("agy") {
             StateValue::Float(i) => *i,
             _ => panic!("Uh oh scoob"),
@@ -352,7 +370,7 @@ impl Drone {
     }
 
     /// Z axis acceleration
-    pub fn get_acceleration_z(&self) -> f64 {
+    pub fn get_acceleration_z(&mut self) -> f64 {
         match self.get_state_field("agz") {
             StateValue::Float(i) => *i,
             _ => panic!("Uh oh scoob"),
@@ -360,7 +378,7 @@ impl Drone {
     }
 
     /// Get lowest temperature
-    pub fn get_lowest_temperature(&self) -> i32 {
+    pub fn get_lowest_temperature(&mut self) -> i32 {
         match self.get_state_field("templ") {
             StateValue::Int(i) => *i,
             _ => panic!("Uh oh scoob"),
@@ -368,7 +386,7 @@ impl Drone {
     }
 
     /// Get highest temperature
-    pub fn get_highest_temperature(&self) -> i32 {
+    pub fn get_highest_temperature(&mut self) -> i32 {
         match self.get_state_field("temph") {
             StateValue::Int(i) => *i,
             _ => panic!("Uh oh scoob"),
@@ -376,7 +394,7 @@ impl Drone {
     }
 
     /// Get average temperature
-    pub fn get_temperature(&self) -> i32 {
+    pub fn get_temperature(&mut self) -> i32 {
         let templ = self.get_lowest_temperature();
         let temph = self.get_highest_temperature();
 
@@ -384,7 +402,7 @@ impl Drone {
     }
 
     /// Get current height in cm
-    pub fn get_height(&self) -> i32 {
+    pub fn get_height(&mut self) -> i32 {
         match self.get_state_field("h") {
             StateValue::Int(i) => *i,
             _ => panic!("Uh oh"),
@@ -392,7 +410,7 @@ impl Drone {
     }
 
     /// Get current distance value from TOF in cm
-    pub fn get_distance_tof(&self) -> i32 {
+    pub fn get_distance_tof(&mut self) -> i32 {
         match self.get_state_field("tof") {
             StateValue::Int(i) => *i,
             _ => panic!("Uh oh"),
@@ -400,7 +418,7 @@ impl Drone {
     }
 
     /// Get current barometer measurement in cm -> absolute height
-    pub fn get_barometer(&self) -> f64 {
+    pub fn get_barometer(&mut self) -> f64 {
         match self.get_state_field("baro") {
             StateValue::Float(i) => *i * 100.0,
             _ => panic!("Uh oh"),
@@ -408,18 +426,18 @@ impl Drone {
     }
 
     /// Get the time the motors have been active in seconds
-    pub fn get_flight_time(&self) -> i32 {
+    pub fn get_flight_time(&mut self) -> i32 {
         match self.get_state_field("time") {
             StateValue::Int(i) => *i,
             _ => panic!("Uh oh"),
         }
     }
 
-    pub fn get_udp_video_address(&self) {
+    pub fn get_udp_video_address(&mut self) {
         // Placeholder, uses global variables in python implementation, will sort what this needs soon
     }
 
-    pub fn get_frame_read(&self) {
+    pub fn get_frame_read(&mut self) {
         // Also placeholder for now
     }
 }
