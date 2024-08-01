@@ -5,12 +5,14 @@
 //
 // Tello API documentation:
 // [1.3](https://dl-cdn.ryzerobotics.com/downloads/tello/20180910/Tello%20SDK%20Documentation%20EN_1.3.pdf),
+// This Wrapper does not support EDU-only commands as of 01/08/2024, this may change in future
 // [2.0 with EDU-only commands](https://dl-cdn.ryzerobotics.com/downloads/Tello/Tello%20SDK%202.0%20User%20Guide.pdf)
 
 use log::{debug, error};
 use std::{
     collections::HashMap,
     net::UdpSocket,
+    sync::atomic::AtomicBool,
     sync::{Arc, Mutex},
     thread,
     time::{Duration, Instant},
@@ -126,7 +128,7 @@ fn start_state_receiver_thread(response_receiver: Arc<Mutex<HashMap<String, Stat
 
 impl Drone {
     /// Instantiate a new Drone object
-    pub fn new() -> Drone {
+    pub fn new() -> Self {
         let socket = UdpSocket::bind("0.0.0.0:8889")
             .expect(format!("couldn't bind to address {}", TELLO_ADDR).as_str());
 
@@ -313,7 +315,7 @@ impl Drone {
     pub fn get_pitch(&mut self) -> i32 {
         match self.get_state_field("pitch") {
             StateValue::Int(i) => *i,
-            _ => panic!("Uh oh scoob"),
+            _ => panic!("'pitch' state returned the incorrect Type"),
         }
     }
 
@@ -321,7 +323,7 @@ impl Drone {
     pub fn get_roll(&mut self) -> i32 {
         match self.get_state_field("roll") {
             StateValue::Int(i) => *i,
-            _ => panic!("Uh oh scoob"),
+            _ => panic!("'roll' state returned the incorrect Type"),
         }
     }
 
@@ -329,7 +331,7 @@ impl Drone {
     pub fn get_yaw(&mut self) -> i32 {
         match self.get_state_field("yaw") {
             StateValue::Int(i) => *i,
-            _ => panic!("Uh oh scoob"),
+            _ => panic!("'yaw' state returned the incorrect Type"),
         }
     }
 
@@ -337,7 +339,7 @@ impl Drone {
     pub fn get_speed_x(&mut self) -> i32 {
         match self.get_state_field("vgx") {
             StateValue::Int(i) => *i,
-            _ => panic!("Uh oh scoob"),
+            _ => panic!("'soeed_x' state returned the incorrect Type"),
         }
     }
 
@@ -345,7 +347,7 @@ impl Drone {
     pub fn get_speed_y(&mut self) -> i32 {
         match self.get_state_field("vgy") {
             StateValue::Int(i) => *i,
-            _ => panic!("Uh oh scoob"),
+            _ => panic!("'speed_y' state returned the incorrect Type"),
         }
     }
 
@@ -353,7 +355,7 @@ impl Drone {
     pub fn get_speed_z(&mut self) -> i32 {
         match self.get_state_field("vgz") {
             StateValue::Int(i) => *i,
-            _ => panic!("Uh oh scoob"),
+            _ => panic!("'speed_z' state returned the incorrect Type"),
         }
     }
 
@@ -361,7 +363,7 @@ impl Drone {
     pub fn get_acceleration_x(&mut self) -> f64 {
         match self.get_state_field("agx") {
             StateValue::Float(i) => *i,
-            _ => panic!("Uh oh scoob"),
+            _ => panic!("'accel_x' state returned the incorrect Type"),
         }
     }
 
@@ -369,7 +371,7 @@ impl Drone {
     pub fn get_acceleration_y(&mut self) -> f64 {
         match self.get_state_field("agy") {
             StateValue::Float(i) => *i,
-            _ => panic!("Uh oh scoob"),
+            _ => panic!("'accel_y' state returned the incorrect Type"),
         }
     }
 
@@ -377,7 +379,7 @@ impl Drone {
     pub fn get_acceleration_z(&mut self) -> f64 {
         match self.get_state_field("agz") {
             StateValue::Float(i) => *i,
-            _ => panic!("Uh oh scoob"),
+            _ => panic!("'accel_z' state returned the incorrect Type"),
         }
     }
 
@@ -385,7 +387,7 @@ impl Drone {
     pub fn get_lowest_temperature(&mut self) -> i32 {
         match self.get_state_field("templ") {
             StateValue::Int(i) => *i,
-            _ => panic!("Uh oh scoob"),
+            _ => panic!("'lowest_temperature' state returned the incorrect Type"),
         }
     }
 
@@ -393,7 +395,7 @@ impl Drone {
     pub fn get_highest_temperature(&mut self) -> i32 {
         match self.get_state_field("temph") {
             StateValue::Int(i) => *i,
-            _ => panic!("Uh oh scoob"),
+            _ => panic!("'highest_temperature' state returned the incorrect Type"),
         }
     }
 
@@ -409,7 +411,7 @@ impl Drone {
     pub fn get_height(&mut self) -> i32 {
         match self.get_state_field("h") {
             StateValue::Int(i) => *i,
-            _ => panic!("Uh oh"),
+            _ => panic!("'height' state returned the incorrect Type"),
         }
     }
 
@@ -417,7 +419,7 @@ impl Drone {
     pub fn get_distance_tof(&mut self) -> i32 {
         match self.get_state_field("tof") {
             StateValue::Int(i) => *i,
-            _ => panic!("Uh oh"),
+            _ => panic!("'distance_tof' state returned the incorrect Type"),
         }
     }
 
@@ -425,7 +427,7 @@ impl Drone {
     pub fn get_barometer(&mut self) -> f64 {
         match self.get_state_field("baro") {
             StateValue::Float(i) => *i * 100.0,
-            _ => panic!("Uh oh"),
+            _ => panic!("'baro' state returned the incorrect Type"),
         }
     }
 
@@ -433,16 +435,20 @@ impl Drone {
     pub fn get_flight_time(&mut self) -> i32 {
         match self.get_state_field("time") {
             StateValue::Int(i) => *i,
-            _ => panic!("Uh oh"),
+            _ => panic!("'time' state returned the incorrect Type"),
         }
     }
 
-    pub fn get_udp_video_address(&mut self) {
-        // Placeholder, uses global variables in python implementation, will sort what this needs soon
+    pub fn get_battery(&mut self) -> i32 {
+        match self.get_state_field("bat") {
+            StateValue::Int(i) => *i,
+            _ => panic!("'bat' state returned the incorrect Type"),
+        }
     }
 
     pub fn get_frame_read(&mut self) {
-        // Also placeholder for now
+        // Placeholder for now
+        if self.background_frame_read.is_empty() {}
     }
 }
 
@@ -848,7 +854,7 @@ impl Drone {
 
             let value_i32 = match value {
                 StateValue::Int(i) => i,
-                _ => panic!("Uh oh"),
+                _ => panic!("'bat' state returned the incorrect Type"),
             };
 
             attitude.insert(key, value_i32);
@@ -880,6 +886,57 @@ impl Drone {
 
     pub fn query_active(&mut self) -> String {
         self.send_read_command("active?")
+    }
+}
+
+/// Struct that reads frames in background
+struct BackgroundFrameRead {
+    address: String,
+    lock: Arc<Mutex<()>>,
+    frame: Arc<Mutex<Vec<u8>>>,
+    frames: Arc<Mutex<VecDeqie<Vec<u8>>>>,
+    with_queue: bool,
+    stopped: Arc<AtomicBool>,
+}
+
+impl BackgroundFrameRead {
+    pub fn new(address: String, with_queue: bool, maxsize: usize) -> Self {
+        ffmpeg::init().unwrap();
+
+        BackgroundFrameRead {
+            address,
+            lock: Arc::new(Mutex::new(())),
+            frame: Arc::new(Mutex::new(vec![0; 300 * 400 * 3])),
+            frames: Arc::new(Mutex::new(VecDeque::with_capacity(maxsize))),
+            with_queue,
+            stopped: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    pub fn start(self) {
+        // Cloning allows for writing and reading in different threads without ownership problems, relies on locks
+        let address = self.address.clone();
+        let lock = self.lock.clone();
+        let frame = self.frame.clone();
+        let frames = self.frames.clone();
+        let with_queue = self.with_queue; //
+        let stopped = self.stopped.clone();
+
+        thread::spawn(move || {
+            let input = match ffmpeg::format::input(&address) {
+                Ok(input) => input,
+                Err(e) => {
+                    eprintln!("Failed to open video stream: {:?}", e);
+                }
+            };
+
+            let video_stream = match input.streams().best(ffmpeg::media::Type::Video) {
+                Ok(video_stream) => video_stream,
+                Err(e) => {
+                    eprintln!("Couldn't find video stream: {:?}", e);
+                }
+            };
+        })
     }
 }
 
