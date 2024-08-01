@@ -927,6 +927,7 @@ impl BackgroundFrameRead {
                 Ok(input) => input,
                 Err(e) => {
                     eprintln!("Failed to open video stream: {:?}", e);
+                    return;
                 }
             };
 
@@ -934,6 +935,15 @@ impl BackgroundFrameRead {
                 Ok(video_stream) => video_stream,
                 Err(e) => {
                     eprintln!("Couldn't find video stream: {:?}", e);
+                    return;
+                }
+            };
+
+            let mut decoder = match video_stream.codec().decoder().video() {
+                Ok(decoder) => decoder,
+                Err(e) => {
+                    eprintln!("Failed to create video decoder: {:?}", e);
+                    return;
                 }
             };
         })
