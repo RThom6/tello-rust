@@ -5,9 +5,9 @@ fn main() {
 
     drone.connect();
 
-    drone.takeoff();
+    // drone.takeoff();
 
-    drone.rotate_clockwise(60);
+    // drone.rotate_clockwise(60);
 
-    drone.land();
+    // drone.land();
 }

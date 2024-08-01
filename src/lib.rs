@@ -1,6 +1,7 @@
 // Rust wrapper to interact with the Ryze Tello drone using the official Tello api
 // By Ryan Thomas: https://github.com/RThom6
-// Essentially a translation of DJITelloPy into Rust: https://github.com/damiafuentes/DJITelloPy/tree/master
+// Essentially a translation of DJITelloPy into Rust: https://github.com/damiafuentes/DJITelloPy/tree/master#
+// Note: This wrapper only supports one drone at a time
 //
 // Tello API documentation:
 // [1.3](https://dl-cdn.ryzerobotics.com/downloads/tello/20180910/Tello%20SDK%20Documentation%20EN_1.3.pdf),
@@ -40,10 +41,87 @@ pub struct Drone {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 enum StateValue {
     Int(i32),
     Float(f64),
     Str(String),
+}
+
+fn parse_state(state_str: &str) -> Option<HashMap<String, StateValue>> {
+    let state_str = state_str.trim();
+
+    if state_str.eq("ok") {
+        return None;
+    }
+
+    let mut state_map: HashMap<String, StateValue> = HashMap::new();
+
+    for field in state_str.split(';') {
+        let split: Vec<&str> = field.split(':').collect();
+
+        if split.len() < 2 {
+            continue;
+        }
+
+        let key = split[0].to_string();
+        let value_str = split[1];
+        let value: StateValue = match state_field_converter(&key, value_str) {
+            Ok(v) => v,
+            Err(e) => {
+                debug!(
+                    "Error parsing state value for {}: {} to {}",
+                    key, value_str, e
+                );
+                error!("{}", e);
+                continue;
+            }
+        };
+
+        state_map.insert(key, value);
+    }
+
+    return Some(state_map);
+}
+
+/// Converts fields to the correct type based on field key
+fn state_field_converter(key: &str, value_str: &str) -> Result<StateValue, String> {
+    if INT_STATE_FIELDS.contains(&key) {
+        value_str
+            .parse::<i32>()
+            .map(StateValue::Int)
+            .map_err(|e| e.to_string())
+    } else if FLOAT_STATE_FIELDS.contains(&key) {
+        value_str
+            .parse::<f64>()
+            .map(StateValue::Float)
+            .map_err(|e| e.to_string())
+    } else {
+        Ok(StateValue::Str(value_str.to_string()))
+    }
+}
+
+/// State receiver thread to run in background\n
+/// Private method ran when connected to drone, should kill program
+/// before trying connect again or will end up with many background threads
+fn start_state_receiver_thread(response_receiver: Arc<Mutex<HashMap<String, StateValue>>>) {
+    thread::spawn(move || {
+        let socket = UdpSocket::bind(TELLO_STATE_ADDR).expect("Couldn't bind receiver socket");
+        let mut buf = [0; 1024];
+
+        loop {
+            let (amt, _src) = socket.recv_from(&mut buf).expect("Didn't receive message");
+            let received = String::from_utf8_lossy(&buf[..amt]);
+
+            let state_map = match parse_state(&received) {
+                Some(map) => map,
+                None => continue,
+            };
+
+            let mut value = response_receiver.lock().unwrap();
+            *value = state_map;
+        }
+    });
 }
 
 impl Drone {
@@ -55,22 +133,28 @@ impl Drone {
         socket
             .set_read_timeout(Some(Duration::from_secs(RESPONSE_TIMEOUT)))
             .expect("set_read_timeout call failed");
-        let socket_recv = socket.try_clone().unwrap();
+
+        let socket_recv = socket.try_clone().unwrap(); // Cloned socket to have multiple of same socket
 
         // Shared response variable protected by mutex
         let shared_response = Arc::new(Mutex::new(None::<String>));
         let response_receiver = Arc::clone(&shared_response);
 
+        // Receiver thread, listens for response from drone on command port
         thread::spawn(move || {
             let socket = socket_recv;
             let mut buf = [0; 1024];
 
             loop {
                 match socket.recv_from(&mut buf) {
-                    Ok((amt, _src)) => {
+                    Ok((amt, src)) => {
+                        if src.to_string() != TELLO_ADDR {
+                            println!("{}", src.to_string());
+                            continue;
+                        }
                         let received = String::from_utf8_lossy(&buf[..amt]);
                         if let Ok(mut value) = response_receiver.lock() {
-                            *value = Some(received.to_string());
+                            *value = Some(received.to_string()); // Save value to shared variable
                         }
                     }
                     Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
@@ -84,11 +168,6 @@ impl Drone {
                 }
             }
         });
-
-        // // Shared state response variable protected by mutex
-        // let state_response = Arc::new(Mutex::new(None::<String>));
-        // let state_receiver = Arc::clone(&state_response);
-        // start_state_receiver_thread(state_receiver);
 
         Drone {
             socket,
@@ -107,31 +186,8 @@ impl Drone {
  * Private command methods for API
  */
 impl Drone {
-    /// State receiver thread to run in background
-    fn start_state_receiver_thread(
-        &'static mut self,
-        response_receiver: Arc<Mutex<HashMap<String, StateValue>>>,
-    ) {
-        thread::spawn(move || {
-            let socket = UdpSocket::bind(TELLO_STATE_ADDR).expect("Couldn't bind receiver socket");
-            let mut buf = [0; 1024];
-
-            loop {
-                let (amt, _src) = socket.recv_from(&mut buf).expect("Didn't receive message");
-                let received = String::from_utf8_lossy(&buf[..amt]);
-
-                let state_map = match self.parse_state(&received) {
-                    Some(map) => map,
-                    None => continue,
-                };
-
-                let mut value = response_receiver.lock().unwrap();
-                *value = state_map;
-            }
-        });
-    }
-
-    /// Send a command without waiting for a return
+    /// Send a command without waiting for a return\n
+    /// Private Method called by library
     fn send_command_without_return(&self, command: &str) {
         self.socket
             .send_to(command.as_bytes(), TELLO_ADDR)
@@ -140,7 +196,8 @@ impl Drone {
         println!("Send Command {}", command);
     }
 
-    /// Send command and wait for a return
+    /// Send command and wait for a return\n
+    /// Private method called by library
     fn send_command_with_return(&mut self, command: &str, timeout: u64) -> Option<String> {
         let time_since_last_command = Instant::now().duration_since(self.last_command_time);
         if TIME_BTW_COMMANDS.min(time_since_last_command.as_secs_f64()) != TIME_BTW_COMMANDS {
@@ -238,59 +295,6 @@ impl Drone {
 
 // State field methods
 impl Drone {
-    fn parse_state(&mut self, state_str: &str) -> Option<HashMap<String, StateValue>> {
-        let state_str = state_str.trim();
-
-        if state_str.eq("ok") {
-            return None;
-        }
-
-        let mut state_map: HashMap<String, StateValue> = HashMap::new();
-
-        for field in state_str.split(';') {
-            let split: Vec<&str> = field.split(':').collect();
-
-            if split.len() < 2 {
-                continue;
-            }
-
-            let key = split[0].to_string();
-            let value_str = split[1];
-            let value: StateValue = match self.state_field_converter(&key, value_str) {
-                Ok(v) => v,
-                Err(e) => {
-                    debug!(
-                        "Error parsing state value for {}: {} to {}",
-                        key, value_str, e
-                    );
-                    error!("{}", e);
-                    continue;
-                }
-            };
-
-            state_map.insert(key, value);
-        }
-
-        return Some(state_map);
-    }
-
-    /// Converts fields to the correct type based on field key
-    fn state_field_converter(&mut self, key: &str, value_str: &str) -> Result<StateValue, String> {
-        if INT_STATE_FIELDS.contains(&key) {
-            value_str
-                .parse::<i32>()
-                .map(StateValue::Int)
-                .map_err(|e| e.to_string())
-        } else if FLOAT_STATE_FIELDS.contains(&key) {
-            value_str
-                .parse::<f64>()
-                .map(StateValue::Float)
-                .map_err(|e| e.to_string())
-        } else {
-            Ok(StateValue::Str(value_str.to_string()))
-        }
-    }
-
     /// Get a specific state field by name
     fn get_state_field(&mut self, key: &str) -> &StateValue {
         // This may be sacreligious
@@ -446,14 +450,19 @@ impl Drone {
 impl Drone {
     pub fn connect(&mut self) {
         // Shared state response variable protected by mutex
-        let state_response = Arc::new(Mutex::new(None::<String>));
+        let state_response = Arc::new(Mutex::new(HashMap::new()));
         let state_receiver = Arc::clone(&state_response);
-        self.start_state_receiver_thread(state_receiver);
+        start_state_receiver_thread(state_receiver);
         self.send_control_command("command", RESPONSE_TIMEOUT);
 
         let reps = 20;
         for i in 0..reps {
-            if !self.state.is_empty() {
+            // Make a method to clone shared state into read state?
+            {
+                self.read_state = self.shared_state.lock().unwrap().clone();
+            }
+
+            if !self.read_state.is_empty() {
                 // let t = i / reps;
                 println!("trying");
                 // Debug message
@@ -463,7 +472,7 @@ impl Drone {
             thread::sleep(Duration::from_secs_f64(1.0 / reps as f64));
         }
 
-        if self.state.is_empty() {
+        if self.read_state.is_empty() {
             // raise error
         }
     }
@@ -825,7 +834,7 @@ impl Drone {
 
             let key = split[0].to_string();
             let value_str = split[1];
-            let value: StateValue = match self.state_field_converter(&key, value_str) {
+            let value: StateValue = match state_field_converter(&key, value_str) {
                 Ok(v) => v,
                 Err(e) => {
                     debug!(
@@ -883,6 +892,9 @@ mod tests {
         let socket = UdpSocket::bind(TELLO_ADDR).expect("couldn't bind to address");
         let shared_response = Arc::new(Mutex::new(None::<String>));
 
+        let state_response = Arc::new(Mutex::new(HashMap::new()));
+        let shared_state = Arc::clone(&state_response);
+
         let mut d = Drone {
             socket,
             is_flying: false,
@@ -890,7 +902,8 @@ mod tests {
             retry_count: 3,
             last_command_time: Instant::now(),
             shared_response,
-            state: HashMap::new(),
+            shared_state,
+            read_state: HashMap::new(),
         };
 
         d.send_command_with_return("a", 6);
