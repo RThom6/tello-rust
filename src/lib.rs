@@ -8,12 +8,16 @@
 // This Wrapper does not support EDU-only commands as of 01/08/2024, this may change in future
 // [2.0 with EDU-only commands](https://dl-cdn.ryzerobotics.com/downloads/Tello/Tello%20SDK%202.0%20User%20Guide.pdf)
 
+use ffmpeg_next;
 use log::{debug, error};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     net::UdpSocket,
-    sync::atomic::AtomicBool,
-    sync::{Arc, Mutex},
+    ptr::null,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
     thread,
     time::{Duration, Instant},
 };
@@ -40,6 +44,7 @@ pub struct Drone {
     shared_response: Arc<Mutex<Option<String>>>,
     shared_state: Arc<Mutex<HashMap<String, StateValue>>>, //State hashmap, closest thing to python dict
     read_state: HashMap<String, StateValue>,
+    background_frame_read: BackgroundFrameRead,
 }
 
 #[derive(Clone)]
@@ -180,6 +185,7 @@ impl Drone {
             shared_response,
             shared_state: Arc::new(Mutex::new(HashMap::new())),
             read_state: HashMap::new(),
+            background_frame_read: BackgroundFrameRead::new(address, with_queue, maxsize),
         }
     }
 }
@@ -894,7 +900,7 @@ struct BackgroundFrameRead {
     address: String,
     lock: Arc<Mutex<()>>,
     frame: Arc<Mutex<Vec<u8>>>,
-    frames: Arc<Mutex<VecDeqie<Vec<u8>>>>,
+    frames: Arc<Mutex<VecDeque<Vec<u8>>>>,
     with_queue: bool,
     stopped: Arc<AtomicBool>,
 }
@@ -902,7 +908,7 @@ struct BackgroundFrameRead {
 impl BackgroundFrameRead {
     /// Instantiate a background frame read
     pub fn new(address: String, with_queue: bool, maxsize: usize) -> Self {
-        ffmpeg::init().unwrap();
+        ffmpeg_next::init().unwrap();
 
         BackgroundFrameRead {
             address,
@@ -925,29 +931,12 @@ impl BackgroundFrameRead {
         let stopped = self.stopped.clone();
 
         thread::spawn(move || {
-            let input = match ffmpeg::format::input(&address) {
-                Ok(input) => input,
-                Err(e) => {
-                    eprintln!("Failed to open video stream: {:?}", e);
-                    return;
-                }
-            };
-
-            let video_stream = match input.streams().best(ffmpeg::media::Type::Video) {
-                Ok(video_stream) => video_stream,
-                Err(e) => {
-                    eprintln!("Couldn't find video stream: {:?}", e);
-                    return;
-                }
-            };
-
-            let mut decoder = match video_stream.codec().decoder().video() {
-                Ok(decoder) => decoder,
-                Err(e) => {
-                    eprintln!("Failed to create video decoder: {:?}", e);
-                    return;
-                }
-            };
+            let input = ffmpeg_next::format::input(&address).unwrap();
+            let video_stream = input
+                .streams()
+                .best(ffmpeg_next::media::Type::Video)
+                .unwrap();
+            let mut decoder = video_stream.codec().decoder().video().unwrap();
 
             for (stream, packet) in input.packets() {
                 if stopped.load(Ordering::SeqCst) {
@@ -955,15 +944,23 @@ impl BackgroundFrameRead {
                 }
 
                 if stream.index() == video_stream.index() {
-                    let mut decoded = ffmpeg::util::frame::video::empty();
+                    let mut decoded = ffmpeg_next::util::frame::Video::empty();
 
-                    if let Err(e) = decoder.decode(&packet, &mut decoded) {
+                    if let Err(e) = decoder.receive_frame(&mut decoded) {
                         eprintln!("Failed to decode packet: {:?}", e);
                         continue;
                     }
 
-                    let mut image_buffer = vec![0; decoded.planes()[0].len()];
-                    decoded.planes()[0].copy_to_slice(&mut image_buffer);
+                    let first_plane = match decoded.planes().next() {
+                        Some(plane) => plane,
+                        None => {
+                            eprintln!("No planes found in the decoded frame");
+                            continue;
+                        }
+                    };
+
+                    let mut image_buffer = vec![0; first_plane.len()];
+                    first_plane.copy_to_slice(&mut image_buffer);
 
                     if with_queue {
                         let mut frames = frames.lock().unwrap();
@@ -1018,6 +1015,7 @@ mod tests {
             shared_response,
             shared_state,
             read_state: HashMap::new(),
+            background_frame_read: BackgroundFrameRead::new(address, with_queue, maxsize),
         };
 
         d.send_command_with_return("a", 6);
