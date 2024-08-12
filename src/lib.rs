@@ -900,6 +900,7 @@ struct BackgroundFrameRead {
 }
 
 impl BackgroundFrameRead {
+    /// Instantiate a background frame read
     pub fn new(address: String, with_queue: bool, maxsize: usize) -> Self {
         ffmpeg::init().unwrap();
 
@@ -913,6 +914,7 @@ impl BackgroundFrameRead {
         }
     }
 
+    /// Start background frame read thread
     pub fn start(self) {
         // Cloning allows for writing and reading in different threads without ownership problems, relies on locks
         let address = self.address.clone();
@@ -946,7 +948,52 @@ impl BackgroundFrameRead {
                     return;
                 }
             };
-        })
+
+            for (stream, packet) in input.packets() {
+                if stopped.load(Ordering::SeqCst) {
+                    break;
+                }
+
+                if stream.index() == video_stream.index() {
+                    let mut decoded = ffmpeg::util::frame::video::empty();
+
+                    if let Err(e) = decoder.decode(&packet, &mut decoded) {
+                        eprintln!("Failed to decode packet: {:?}", e);
+                        continue;
+                    }
+
+                    let mut image_buffer = vec![0; decoded.planes()[0].len()];
+                    decoded.planes()[0].copy_to_slice(&mut image_buffer);
+
+                    if with_queue {
+                        let mut frames = frames.lock().unwrap();
+                        if frames.len() == frames.capacity() {
+                            frames.pop_front();
+                        }
+                        frames.push_back(image_buffer);
+                    } else {
+                        let mut frame = frame.lock().unwrap();
+                        *frame = image_buffer;
+                    }
+                }
+            }
+        });
+    }
+
+    pub fn get_queued_frame(&self) -> Option<Vec<u8>> {
+        let _lock = self.lock.lock().unwrap();
+        let mut frames = self.frames.lock().unwrap();
+        frames.pop_front()
+    }
+
+    pub fn get_frame(&mut self) -> Vec<u8> {
+        let _lock = self.lock.lock().unwrap();
+        let frame = self.frame.lock().unwrap();
+        frame.close()
+    }
+
+    pub fn stop(&mut self) {
+        self.stopped.store(true, Ordering::SeqCst);
     }
 }
 
