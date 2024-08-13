@@ -13,7 +13,6 @@ use log::{debug, error};
 use std::{
     collections::{HashMap, VecDeque},
     net::UdpSocket,
-    ptr::null,
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
