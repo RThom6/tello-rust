@@ -43,7 +43,6 @@ pub struct Drone {
     shared_response: Arc<Mutex<Option<String>>>,
     shared_state: Arc<Mutex<HashMap<String, StateValue>>>, //State hashmap, closest thing to python dict
     read_state: HashMap<String, StateValue>,
-    background_frame_read: BackgroundFrameRead,
 }
 
 #[derive(Clone)]
@@ -184,7 +183,6 @@ impl Drone {
             shared_response,
             shared_state: Arc::new(Mutex::new(HashMap::new())),
             read_state: HashMap::new(),
-            background_frame_read: BackgroundFrameRead::new(address, with_queue, maxsize),
         }
     }
 }
@@ -449,11 +447,6 @@ impl Drone {
             StateValue::Int(i) => *i,
             _ => panic!("'bat' state returned the incorrect Type"),
         }
-    }
-
-    pub fn get_frame_read(&mut self) {
-        // Placeholder for now
-        if self.background_frame_read.is_empty() {}
     }
 }
 
@@ -894,105 +887,6 @@ impl Drone {
     }
 }
 
-/// Struct that reads frames in background
-struct BackgroundFrameRead {
-    address: String,
-    lock: Arc<Mutex<()>>,
-    frame: Arc<Mutex<Vec<u8>>>,
-    frames: Arc<Mutex<VecDeque<Vec<u8>>>>,
-    with_queue: bool,
-    stopped: Arc<AtomicBool>,
-}
-
-impl BackgroundFrameRead {
-    /// Instantiate a background frame read
-    pub fn new(address: String, with_queue: bool, maxsize: usize) -> Self {
-        ffmpeg_next::init().unwrap();
-
-        BackgroundFrameRead {
-            address,
-            lock: Arc::new(Mutex::new(())),
-            frame: Arc::new(Mutex::new(vec![0; 300 * 400 * 3])),
-            frames: Arc::new(Mutex::new(VecDeque::with_capacity(maxsize))),
-            with_queue,
-            stopped: Arc::new(AtomicBool::new(false)),
-        }
-    }
-
-    /// Start background frame read thread
-    pub fn start(self) {
-        // Cloning allows for writing and reading in different threads without ownership problems, relies on locks
-        let address = self.address.clone();
-        let lock = self.lock.clone();
-        let frame = self.frame.clone();
-        let frames = self.frames.clone();
-        let with_queue = self.with_queue; //
-        let stopped = self.stopped.clone();
-
-        thread::spawn(move || {
-            let input = ffmpeg_next::format::input(&address).unwrap();
-            let video_stream = input
-                .streams()
-                .best(ffmpeg_next::media::Type::Video)
-                .unwrap();
-            let mut decoder = video_stream.codec().decoder().video().unwrap();
-
-            for (stream, packet) in input.packets() {
-                if stopped.load(Ordering::SeqCst) {
-                    break;
-                }
-
-                if stream.index() == video_stream.index() {
-                    let mut decoded = ffmpeg_next::util::frame::Video::empty();
-
-                    if let Err(e) = decoder.receive_frame(&mut decoded) {
-                        eprintln!("Failed to decode packet: {:?}", e);
-                        continue;
-                    }
-
-                    let first_plane = match decoded.planes().next() {
-                        Some(plane) => plane,
-                        None => {
-                            eprintln!("No planes found in the decoded frame");
-                            continue;
-                        }
-                    };
-
-                    let mut image_buffer = vec![0; first_plane.len()];
-                    first_plane.copy_to_slice(&mut image_buffer);
-
-                    if with_queue {
-                        let mut frames = frames.lock().unwrap();
-                        if frames.len() == frames.capacity() {
-                            frames.pop_front();
-                        }
-                        frames.push_back(image_buffer);
-                    } else {
-                        let mut frame = frame.lock().unwrap();
-                        *frame = image_buffer;
-                    }
-                }
-            }
-        });
-    }
-
-    pub fn get_queued_frame(&self) -> Option<Vec<u8>> {
-        let _lock = self.lock.lock().unwrap();
-        let mut frames = self.frames.lock().unwrap();
-        frames.pop_front()
-    }
-
-    pub fn get_frame(&mut self) -> Vec<u8> {
-        let _lock = self.lock.lock().unwrap();
-        let frame = self.frame.lock().unwrap();
-        frame.close()
-    }
-
-    pub fn stop(&mut self) {
-        self.stopped.store(true, Ordering::SeqCst);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1014,7 +908,6 @@ mod tests {
             shared_response,
             shared_state,
             read_state: HashMap::new(),
-            background_frame_read: BackgroundFrameRead::new(address, with_queue, maxsize),
         };
 
         d.send_command_with_return("a", 6);
