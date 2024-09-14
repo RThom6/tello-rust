@@ -42,7 +42,7 @@ Here is a basic example of how to use the library to control the Tello drone:
         drone.land().expect("Failed to land");
     }
 
-Supported Commands
+### Supported Commands
 
     Takeoff: takeoff()
     Land: land()
@@ -50,12 +50,12 @@ Supported Commands
     Flip: flip(direction)
     And more...
 
-Limitations
+### Limitations
 
     This wrapper does not support the EDU-only commands from SDK 2.0 yet, but this might be added in future updates.
     Only one drone can be controlled at a time.
 
-Contributing
+### Contributing
 
 Contributions are welcome! If you find a bug or have a feature request, please open an issue or submit a pull request on GitHub.
 License
