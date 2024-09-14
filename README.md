@@ -30,17 +30,17 @@ to your cargo.toml file
 
 Here is a basic example of how to use the library to control the Tello drone:
 
-rust
+### rust
 
-use ryze_tello::Tello;
-
-fn main() {
-    let mut drone = Tello::new();
+    use ryze_tello::Tello;
     
-    drone.takeoff().expect("Failed to takeoff");
-    drone.flip("l").expect("Failed to flip left");
-    drone.land().expect("Failed to land");
-}
+    fn main() {
+        let mut drone = Tello::new();
+    
+        drone.takeoff().expect("Failed to takeoff");
+        drone.flip("l").expect("Failed to flip left");
+        drone.land().expect("Failed to land");
+    }
 
 Supported Commands
 
