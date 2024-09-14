@@ -22,7 +22,7 @@ You can add this crate to your project by running the command:
 
 Or by adding
 
-    tello-rust = "1.0.0"
+    tello-rust = "1.0.1"
 
 to your cargo.toml file
 
