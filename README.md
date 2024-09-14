@@ -1,7 +1,7 @@
 # Ryze Tello Drone Rust Wrapper
 
 ## A Rust wrapper for interacting with the Ryze Tello drone, using the official Tello API. This library is inspired by the DJITelloPy Python library, offering similar functionality but in the Rust programming language.
-Features
+### Features
 
     Control the Ryze Tello drone using Rust.
     Send commands to the drone, like takeoff, land, flip, and more.
@@ -9,12 +9,12 @@ Features
     Basic support for the Tello SDK 1.3 commands (no support for EDU-only commands as of now).
 
 Note: This wrapper currently only supports controlling one drone at a time.
-Tello SDK Documentation
+### Tello SDK Documentation
 
     Tello SDK 1.3
     Tello SDK 2.0 (including EDU-only commands)
 
-Installation
+### Installation
 
 You can add this crate to your project by running the command:
 
@@ -26,7 +26,7 @@ Or by adding
 
 to your cargo.toml file
 
-Usage
+### Usage
 
 Here is a basic example of how to use the library to control the Tello drone:
 
