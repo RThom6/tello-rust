@@ -8,15 +8,11 @@
 // This Wrapper does not support EDU-only commands as of 01/08/2024, this may change in future
 // [2.0 with EDU-only commands](https://dl-cdn.ryzerobotics.com/downloads/Tello/Tello%20SDK%202.0%20User%20Guide.pdf)
 
-use ffmpeg_next;
 use log::{debug, error};
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     net::UdpSocket,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc, Mutex,
-    },
+    sync::{Arc, Mutex},
     thread,
     time::{Duration, Instant},
 };
@@ -248,7 +244,7 @@ impl Drone {
 
     /// Sends control command to Tello and waits for a response
     fn send_control_command(&mut self, command: &str, timeout: u64) -> bool {
-        for _ in 0..self.retry_count {
+        for i in 0..self.retry_count {
             let response = self
                 .send_command_with_return(command, timeout)
                 .unwrap_or_else(|| String::from("Attempt failed, retrying"));
@@ -260,10 +256,9 @@ impl Drone {
                 println!("{}", response);
             }
 
-            // println!("tried {} times: {}", i, response);
+            println!("tried {} times: {}", i, response);
         }
 
-        // raise_result_error ?
         return false;
     }
 
@@ -290,11 +285,6 @@ impl Drone {
     /// Send command to tello and wait for response, parses response into float
     fn send_read_command_float(&mut self, command: &str) -> f64 {
         self.send_read_command(command).parse::<f64>().unwrap()
-    }
-
-    fn raise_result_error(&mut self, command: &str, response: &str) {
-        let tries = 1 + self.retry_count;
-        // need some replacement for the raise python macro, easy enough will sort it soon
     }
 }
 
@@ -460,7 +450,7 @@ impl Drone {
         self.send_control_command("command", RESPONSE_TIMEOUT);
 
         let reps = 20;
-        for i in 0..reps {
+        for _ in 0..reps {
             // Make a method to clone shared state into read state?
             {
                 self.read_state = self.shared_state.lock().unwrap().clone();
