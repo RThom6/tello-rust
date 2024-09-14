@@ -16,12 +16,15 @@ Tello SDK Documentation
 
 Installation
 
-You can add this crate to your project by adding the following to your Cargo.toml file:
+You can add this crate to your project by running the command:
 
-toml
+    cargo add tell-rust
 
-[dependencies]
-ryze-tello = "0.1.0"
+Or by adding
+
+    tello-rust = "1.0.0"
+
+to your cargo.toml file
 
 Usage
 
