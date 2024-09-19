@@ -1,7 +1,7 @@
 [package]
 repository = "https://github.com/rthom6/tello-rust"
 name = "tello-rust"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
 license = "MIT OR Apache-2.0"
 description = "This project is designed to allow users to control a Ryze Tello drone using Rust. It provides a Rust-based interface to abstract away from the Tello SDK allowing for quick setup and works over a UDP port."
@@ -9,5 +9,4 @@ homepage = "https://github.com/rthom6/tello-rust"
 readme = "README.md"
 
 [dependencies]
-log = "*"
-ffmpeg-next = "*"
+log = "0.4.22"
