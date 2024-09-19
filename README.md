@@ -1,6 +1,6 @@
 # Ryze Tello Drone Rust Wrapper
 
-## A Rust wrapper for interacting with the Ryze Tello drone, using the official Tello API. This library is inspired by the DJITelloPy Python library, offering similar functionality but in the Rust programming language.
+A Rust wrapper for interacting with the Ryze Tello drone, using the official Tello API. This library is inspired by the DJITelloPy Python library, offering similar functionality but in the Rust programming language.
 ### Features
 
     Control the Ryze Tello drone using Rust.
@@ -22,7 +22,7 @@ You can add this crate to your project by running the command:
 
 Or by adding
 
-    tello-rust = "1.0.0"
+    tello-rust = "1.0.1"
 
 to your cargo.toml file
 
