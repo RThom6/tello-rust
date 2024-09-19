@@ -41,7 +41,7 @@ pub struct Drone {
     read_state: HashMap<String, StateValue>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq)]
 #[allow(dead_code)]
 enum StateValue {
     Int(i32),
@@ -881,25 +881,72 @@ impl Drone {
 mod tests {
     use super::*;
 
+    // #[test]
+    // fn system_time_test() {
+    //     let socket = UdpSocket::bind(TELLO_ADDR).expect("couldn't bind to address");
+    //     let shared_response = Arc::new(Mutex::new(None::<String>));
+
+    //     let state_response = Arc::new(Mutex::new(HashMap::new()));
+    //     let shared_state = Arc::clone(&state_response);
+
+    //     let mut d = Drone {
+    //         socket,
+    //         is_flying: false,
+    //         stream_on: false,
+    //         retry_count: 3,
+    //         last_command_time: Instant::now(),
+    //         shared_response,
+    //         shared_state
+    //         read_state: HashMap::new(),
+    //     };
+
+    //     d.send_command_with_return("a", 6);
+    // }
+
     #[test]
-    fn system_time_test() {
-        let socket = UdpSocket::bind(TELLO_ADDR).expect("couldn't bind to address");
-        let shared_response = Arc::new(Mutex::new(None::<String>));
+    fn test_parse_state_valid_input() {
+        let input = "mid:1;x:2;y:3;z:4;pitch:0;roll:0;yaw:0;vgx:0;vgy:0;vgz:0;templ:50;temph:60;tof:100;h:5;bat:85;time:300;";
+        let result = parse_state(input).unwrap();
 
-        let state_response = Arc::new(Mutex::new(HashMap::new()));
-        let shared_state = Arc::clone(&state_response);
+        assert_eq!(result.get("mid"), Some(&StateValue::Int(1)));
+        assert_eq!(result.get("x"), Some(&StateValue::Int(2)));
+        assert_eq!(result.get("y"), Some(&StateValue::Int(3)));
+        assert_eq!(result.get("bat"), Some(&StateValue::Int(85)));
+        assert_eq!(result.get("templ"), Some(&StateValue::Int(50)));
+    }
 
-        let mut d = Drone {
-            socket,
-            is_flying: false,
-            stream_on: false,
-            retry_count: 3,
-            last_command_time: Instant::now(),
-            shared_response,
-            shared_state,
-            read_state: HashMap::new(),
-        };
+    #[test]
+    fn test_parse_state_empty_input() {
+        let input = "";
+        let result = parse_state(input);
 
-        d.send_command_with_return("a", 6);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_state_field_converter_int() {
+        let key = "x";
+        let value_str = "10";
+        let result = state_field_converter(key, value_str).unwrap();
+
+        assert_eq!(result, StateValue::Int(10));
+    }
+
+    #[test]
+    fn test_state_field_converter_float() {
+        let key = "baro";
+        let value_str = "99.99";
+        let result = state_field_converter(key, value_str).unwrap();
+
+        assert_eq!(result, StateValue::Float(99.99));
+    }
+
+    #[test]
+    fn test_state_field_converter_invalid_input() {
+        let key = "x";
+        let value_str = "invalid";
+        let result = state_field_converter(key, value_str);
+
+        assert!(result.is_err());
     }
 }
